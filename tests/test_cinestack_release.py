@@ -5,7 +5,10 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
-import tomllib
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("cinestack_migration", ROOT / "tools/migrate_workflow.py")
