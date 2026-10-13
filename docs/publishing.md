@@ -1,21 +1,28 @@
 # Comfy Registry 发布准备
 
 本仓库已准备独立元数据、静态依赖列表、许可证、迁移工具、CI 和手动发布 Action。
-`PublisherId` 为空，当前状态是“准备完成，尚未上架”。GitHub 用户名不能代替已注册 Publisher ID。
+Publisher 已注册为 [`cinestack`](https://registry.comfy.org/zh/publishers/cinestack)，显示名称 `CineStack / 影栈`，元数据已填写真实 Publisher ID。当前尚未上架。
 
 官方参考（2026-10-13 核对）：
 - https://docs.comfy.org/registry/publishing
 - https://docs.comfy.org/registry/specifications
 - https://github.com/Comfy-Org/publish-node-action
 
-## 首次上架
+## 当前阶段：注册与发布密钥
 
-1. 在 Comfy Registry 创建你自己的 Publisher，记下真实 Publisher ID。不要使用上游的 `aimixer`。
-2. 更新 `pyproject.toml` 的 `[tool.comfy].PublisherId`。
-3. 运行 `python tools/check_release.py --publish`，完成实际 ComfyUI/GPU 环境验收。
-4. 创建该 Publisher 的 Registry API key，将其存入 GitHub 仓库 Actions secret `REGISTRY_ACCESS_TOKEN`；密钥不写入代码或 issue。
-5. 提交配置，在 Actions 中手动运行 **Publish to Comfy Registry**，输入与元数据一致的版本号。
-6. 检查 Registry 新条目的仓库、作者、版本、安装文件及节点加载结果。
+按用户 2026-10-13 的安排，本阶段先完成账号和密钥配置，实际 GPU 验证留到后续；本阶段不触发正式发布。
+
+1. Publisher `cinestack` 已注册，项目 `pyproject.toml` 使用同一 ID。
+2. 在 Publisher 页面创建专用于此仓库的 API key，建议名称 `cinestack-h3-github-actions`。创建和密钥录入由账号持有人亲自完成。
+3. 在 [GitHub Actions secrets](https://github.com/guomenghao/ComfyUI-CineStack-H3/settings/secrets/actions) 新建 Repository secret，名称必须为 `REGISTRY_ACCESS_TOKEN`，值为该 Publisher 的 Registry API key。
+4. 密钥无需发送到聊天或提交到代码；配置检查只确认 secret 名称存在，不读取其内容。
+5. 运行 `python tools/check_release.py --publish`，检查项目身份和发布元数据。这一步不连接 Registry、不发布，也不验证 GPU 生成效果。
+
+## 后续阶段：正式发布
+
+1. 在实际 ComfyUI/GPU 环境完成目标设备验收。
+2. 在 Actions 中手动运行 **Publish to Comfy Registry**，输入与元数据一致的版本号。
+3. 检查 Registry 新条目的仓库、作者、版本、安装文件及节点加载结果。
 
 当前包 ID 为 `cinestack-h3`，首版 `0.1.0`。上架前确认 Registry ID 可用；正式创建后包 ID 不可随意变更。
 普通推送只运行 CI，不自动发布。发布 Action 会检查 Publisher ID、token 和版本，缺少任一项则停止。

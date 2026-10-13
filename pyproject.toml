@@ -13,8 +13,8 @@ Documentation = "https://github.com/guomenghao/ComfyUI-CineStack-H3#readme"
 Issues = "https://github.com/guomenghao/ComfyUI-CineStack-H3/issues"
 
 [tool.comfy]
-# Set the actual Comfy Registry publisher ID before publishing; GitHub login is not proof of ownership.
-PublisherId = ""
+# Registered at https://registry.comfy.org/zh/publishers/cinestack on 2026-10-13.
+PublisherId = "cinestack"
 DisplayName = "CineStack H3 / 影栈"
 Icon = ""
 requires-comfyui = ">=0.30.0"
