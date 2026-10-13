@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("cinestack_migration", ROOT / "tools/migrate_workflow.py")
@@ -51,8 +52,13 @@ class CineStackReleaseTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / "tools/check_release.py")], capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         result = subprocess.run([sys.executable, str(ROOT / "tools/check_release.py"), "--publish"], capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn(b"PublisherId", result.stderr)
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            publisher = tomllib.load(stream)["tool"]["comfy"]["PublisherId"].strip()
+        if publisher:
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+        else:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b"PublisherId", result.stderr)
 
     def test_all_examples_match_node_identity_and_routes_are_namespaced(self):
         ids = set(migration.NODE_IDS.values())

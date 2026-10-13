@@ -59,6 +59,8 @@ GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验�
 当前为独立初始版本 `0.1.0`；尚未发布到 Comfy Registry。
 
 ```bash
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -p 'test_segment_seed_refine_only.py' -v
 python -m unittest discover -s tests -p 'test_cinestack_release.py' -v
 python tools/check_release.py

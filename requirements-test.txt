@@ -1,0 +1,4 @@
+# CPU test dependencies; install torch separately with the CPU wheel index.
+numpy
+pillow
+aiohttp
