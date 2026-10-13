@@ -3,6 +3,8 @@
 本仓库已准备独立元数据、静态依赖列表、许可证、迁移工具、CI 和手动发布 Action。
 Publisher 已注册为 [`cinestack`](https://registry.comfy.org/zh/publishers/cinestack)，显示名称 `CineStack / 影栈`，元数据已填写真实 Publisher ID。当前尚未上架。
 
+2026-10-13 已确认 GitHub Repository secret `REGISTRY_ACCESS_TOKEN` 存在，发布元数据检查通过。Secret 名称存在不等于已验证 Registry 认证；本阶段只完成注册与配置，正式发布仍保持手动触发。
+
 官方参考（2026-10-13 核对）：
 - https://docs.comfy.org/registry/publishing
 - https://docs.comfy.org/registry/specifications
