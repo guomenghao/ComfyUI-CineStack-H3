@@ -1,10 +1,12 @@
+> 来源存档：这是上游说明及之前补丁说明，节点名称和安装路径以影栈主 README 为准。
+
 # ComfyUI MiniMax H3 Director
 
 基于 **ComfyUI 官方 MiniMax-H3** 的多段音视频导演台插件。仓库地址：[AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director)
 
 **English** → [README_EN.md](README_EN.md)
 
-![MiniMaxH3Director 工作流截图](docs/screenshot.png)
+![MiniMaxH3Director 工作流截图](../screenshot.png)
 
 ## 功能介绍
 

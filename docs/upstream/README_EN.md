@@ -1,3 +1,5 @@
+> 来源存档：这是上游说明及之前补丁说明，节点名称和安装路径以影栈主 README 为准。
+
 # ComfyUI MiniMax H3 Director
 
 Multi-segment AV timeline director for **official ComfyUI MiniMax-H3**.  
@@ -5,7 +7,7 @@ Repository: [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/Comf
 
 **中文文档** → [README.md](README.md)
 
-![MiniMaxH3Director workflow screenshot](docs/screenshot.png)
+![MiniMaxH3Director workflow screenshot](../screenshot.png)
 
 ## Features
 
