@@ -1,0 +1,13 @@
+{
+  "MiniMaxH3Director": "CineStackH3Director",
+  "MiniMaxH3DirectorRefine": "CineStackH3DirectorRefine",
+  "MiniMaxH3DirectorSelfLift": "CineStackH3DirectorSelfLift",
+  "MiniMaxH3DirectorSemanticBridge": "CineStackH3DirectorSemanticBridge",
+  "MiniMaxH3DirectorFaceRefine": "CineStackH3DirectorFaceRefine",
+  "ComfyMiniMaxH3Director": "CineStackH3Director",
+  "MiniMaxH3DirectorConditioning": "CineStackH3DirectorConditioning",
+  "MiniMaxH3DirectorPlannerConditioning": "CineStackH3DirectorPlannerConditioning",
+  "MiniMaxH3DirectorGroupImageToVideo": "CineStackH3DirectorGroupImageToVideo",
+  "MiniMaxH3DirectorGroupReferenceToVideo": "CineStackH3DirectorGroupReferenceToVideo",
+  "MiniMaxH3DirectorGroupsCombine": "CineStackH3DirectorGroupsCombine"
+}

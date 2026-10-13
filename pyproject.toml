@@ -1,0 +1,20 @@
+[project]
+name = "cinestack-h3"
+version = "0.1.0"
+description = "CineStack H3: local cinematic workflows with fixed per-segment seeds and strict cached second-pass refinement."
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = ["opencv-python-headless>=4.8", "imageio-ffmpeg>=0.4", "scenedetect>=0.6.4,<0.8", "ultralytics>=8.0"]
+classifiers = ["Operating System :: OS Independent", "Environment :: GPU :: NVIDIA CUDA"]
+
+[project.urls]
+Repository = "https://github.com/guomenghao/ComfyUI-CineStack-H3"
+Documentation = "https://github.com/guomenghao/ComfyUI-CineStack-H3#readme"
+Issues = "https://github.com/guomenghao/ComfyUI-CineStack-H3/issues"
+
+[tool.comfy]
+# Set the actual Comfy Registry publisher ID before publishing; GitHub login is not proof of ownership.
+PublisherId = ""
+DisplayName = "CineStack H3 / 影栈"
+Icon = ""
+requires-comfyui = ">=0.30.0"

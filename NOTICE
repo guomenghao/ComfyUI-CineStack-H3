@@ -1,0 +1,14 @@
+CineStack H3 / 影栈
+Derived from ComfyUI MiniMax H3 Director by AIMixer and contributors.
+Upstream: https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director
+Base commit: 8151b291fcacee5ddb70c6493eaed4f831bc6867 (2026-10-12)
+Upstream license: Apache License, Version 2.0 (see LICENSE).
+
+CineStack modifications, 2026-10-13, maintained in guomenghao/ComfyUI-CineStack-H3:
+- Fixed optional per-segment first-pass seeds across all planning and UI paths.
+- Strict cached refinement only, with specific failures instead of automatic first-pass sampling.
+- Independent node IDs, HTTP routes and progress events; workflow migration tools.
+- Project metadata, documentation, CPU/browser regression tests and release preparation.
+
+Original copyright, license notices and acknowledgments remain applicable.
+This is an independent derivative; it is not an AIMixer or ComfyUI official product.
