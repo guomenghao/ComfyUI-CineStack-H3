@@ -555,7 +555,7 @@ def validate_external_group_inputs(
                     f"task_type is i2v but i2v_groups[{idx}] has no first_frame. "
                     "Connect first_frame on that Group node."
                 )
-            # fl2v task accepts mixed groups: t2v (prompt-only), i2v (first), 
+            # fl2v task accepts mixed groups: t2v (prompt-only), i2v (first),
             # fl2v (first+last or last-only). Official ImageToVideo allows any combo.
         return task_key, i2v, "i2v"
 
