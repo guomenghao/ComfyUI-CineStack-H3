@@ -31,6 +31,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.evaluate(async () => {
     const {app}=await import('/scripts/app.js'); const {api}=await import('/scripts/api.js');
+    const {setLocale}=await import('/web/js/minimax_i18n.js'); setLocale('zh');
     const {CineStackH3DirectorEditor}=await import('/web/js/minimax_timeline.js');
     const task='r2v — 参考主体生视频(Reference to Video)';
     const timeline={version:5,timelineMode:'prompt_batch',editMode:'segment',frameRate:24,
