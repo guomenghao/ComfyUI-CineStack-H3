@@ -1,0 +1,39 @@
+CineStack 0.6.6 — Sampling host/pinned lifecycle
+
+Evidence and implementation
+- Inspected official ComfyUI v0.40.0 dynamic model load, low-VRAM patch pinning,
+  HostBuffer ownership, prefetch cleanup and execution finally paths.
+- Confirmed CineStack omitted reset_cast_buffers inside the multi-segment node.
+  Added host-owned prefetch/reset sequence after every internal sampler call,
+  including exceptions, before dropping patchers and optional model unloading.
+- Preserve weights pin caches, sampling arguments, outputs, disk/cache identities,
+  independent seeds, strict refine-only, rolling exports and bidirectional links.
+- Add bounded metadata-only host probes and sampler pre/post cleanup checkpoints.
+  Distinguish Comfy registered pins, weight/patch HostBuffers, PyTorch host cache,
+  glibc, RSS and cgroup accounting. Do not sum overlapping measurements.
+
+Local validation
+- 164 Python tests: 162 passed, 2 skipped (no system FFmpeg); bundled FFmpeg runs
+  rolling/export tests. Full run: 37.662 seconds.
+- Final cleanup-status labeling adjustment: all 9 host-memory tests passed again.
+- 134 real Chrome assertions: 42 seed/version/migration, 82 Director controls,
+  10 versioned asset/cache checks. Asset version v0.6.6-bb1de5cb0b6c187d.
+- Release identity/example versions and CRLF-aware whitespace checks passed.
+- Nine new tests cover real sampler dispatch against a CPU pin lifecycle fixture,
+  19 internal stages, patch strong-owner release, base-weight pin preservation,
+  unchanged seed/output behavior, sampler/cleanup failures, legacy API fallback,
+  unload order, shared pin-state dedup, bounded probes, phase-specific snapshots,
+  PyTorch host isolation and ContextVar restoration on success/failure.
+- Existing official-node import AST test now supplies package context for its
+  new relative helper imports; its sampler/shift dispatch assertions are unchanged.
+- Existing CPU tests exercise rolling/partial/full exports, strict second-pass
+  reuse/failure, independent seeds, connected/disconnected junctions and old plans.
+
+Limits and acceptance
+- Native CUDA registration, GPU model execution, HostBuffer physical RSS and
+  performance are not reproduced on this Mac. Lifecycle fixtures are not GPU proof.
+- The old server trace did not measure pinned allocations. The missing cleanup is
+  confirmed in code, but attributing every observed ~1.7 GiB to patch pins requires
+  the next server run. Base-weight warmup/other native caches can also grow.
+- See host-memory-lifecycle.txt for source links and precise 19-segment acceptance.
+- No Registry publication; GitHub push only. CI result is available on the commit.

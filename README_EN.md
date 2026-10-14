@@ -6,6 +6,12 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Sampling host/pinned buffer lifecycle (0.6.6)
+
+Run ComfyUI's prefetch-then-cast cleanup after every internal sampling pass, including failures, before dropping model patchers or optional unloading. Dynamic patch HostBuffers are released while base-weight pin caches and unload policy remain intact. First/refine/SelfLift calls share this path. Older hosts feature-detect the APIs.
+
+New sampler checkpoints report separate Comfy pinned, per-model weight/patch HostBuffers, optional PyTorch host allocator statistics and cast/prefetch counts. This fixes a confirmed lifecycle omission; attribution of the entire observed ~1.7 GiB/segment needs the next real-server trace. See [evidence and acceptance](docs/host-memory-lifecycle.txt).
+
 ## Postprocessing memory peak fix (0.6.5)
 
 Rolling/disk generation reuses the isolated export buffer produced by opening grade for the 12-frame additive seam correction, releasing obsolete decoder aliases beforehand. Identical cropped views are deduplicated; different guides/views and borrowed cached inputs remain isolated. Legacy functional callers keep their input-preserving behavior.
@@ -14,7 +20,7 @@ New diagnostic checkpoints bracket CPU conversion, opening grade, reference rele
 
 ## Stage memory diagnostics (0.6.4)
 
-Rolling generation now enables read-only stage observations by default. Search the console for `CineStack MEM:` and collect `memory_diagnostics.jsonl` beside this run's output. The trace covers conditioning, sampling/cache reuse, refinement passes, decode, stream encoding, reference cleanup and merge. It reports process memory, deduplicated visible tensor storages, available glibc allocator counters, cgroup memory and model record counts. It never trims allocators, unloads models or changes sampling. It diagnoses growth; it does not claim to fix the real-model RAM issue. Set `CINESTACK_MEMORY_DIAGNOSTICS=0` before starting ComfyUI to disable. See [scope and interpretation](docs/memory-diagnostics.txt).
+Rolling generation now enables read-only stage observations by default. Search the console for `CineStack MEM:` and collect `memory_diagnostics.jsonl` beside this run's output. The trace covers conditioning, sampling/cache reuse, refinement passes, decode, stream encoding, reference cleanup and merge. It reports process memory, deduplicated visible tensor storages, available glibc allocator counters, cgroup memory and model record counts. It never trims allocators, unloads models or changes sampling. These observations diagnose growth; they do not themselves release memory. Set `CINESTACK_MEMORY_DIAGNOSTICS=0` before starting ComfyUI to disable. See [scope and interpretation](docs/memory-diagnostics.txt).
 
 ## Visible execution controls (0.6.3)
 
@@ -89,7 +95,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.5 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.6 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

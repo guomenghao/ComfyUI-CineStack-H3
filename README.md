@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.5** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.6** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 采样阶段 Host/pinned 缓冲区修复（0.6.6）
+
+补齐导演台内部每次采样后的 ComfyUI 预取与 cast 缓冲区清理：在动态模型仍可访问时释放临时补丁 HostBuffer，保留基础权重 pinned 缓存及原模型卸载策略。一采、二采/N采和 SelfLift 共用此路径，异常退出也执行；不依赖是否勾选段间卸载。
+
+新增 `sampler_execute_before/after` 与 `sampler_buffers_before/after`，区分基础权重、补丁 HostBuffer、Comfy 注册 pinned、PyTorch host allocator 和底层预取/cast 缓存。更新后重启，按原 19 段配置复跑并收集 JSONL，以核实实机释放量。代码已定位缺少的生命周期步骤，实际约 1.7 GiB 增量的全部归属仍待新日志确认。见 [原因、证据与验收](docs/host-memory-lifecycle.txt)。
 
 ## 后处理内存峰值修复（0.6.5）
 
@@ -150,7 +156,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.5` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.6` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

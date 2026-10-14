@@ -45,13 +45,60 @@ def _evict_dead_loaded_models() -> int:
     return evicted
 
 
+def cleanup_sampling_buffers() -> dict:
+    """Run Comfy's node-boundary buffer cleanup between internal sampling calls.
+
+    Drain prefetch BEFORE reset (which synchronizes streams and releases dynamic
+    patch host buffers). Do this while loaded patchers are still reachable, before
+    optional model unloading. Never manually unregister pins or trim allocators.
+    Older/non-AIMDO hosts keep their existing prefetch-only path.
+    """
+    from importlib import import_module
+    result = {"prefetch": "unavailable", "cast_buffers": "not_applicable"}
+    try:
+        mm = import_module("comfy.model_management")
+        memory = import_module("comfy.memory_management")
+    except ImportError:
+        memory = None
+        try:
+            mm = import_module("comfy.model_management")
+        except ImportError:
+            return result
+    dynamic = bool(getattr(memory, "aimdo_enabled", False))
+    if dynamic:
+        result["cast_buffers"] = "pending"
+    try:
+        prefetch = import_module("comfy.model_prefetch")
+    except ImportError:
+        prefetch = None
+    drain = getattr(prefetch, "cleanup_prefetch_queues", None)
+    reset = getattr(mm, "reset_cast_buffers", None)
+    try:
+        if callable(drain):
+            drain()
+            result["prefetch"] = "cleared"
+        if dynamic:
+            if not callable(drain) or not callable(reset):
+                result["cast_buffers"] = "unsupported"
+                log.warning("CineStack host buffer cleanup unavailable: AIMDO host lacks prefetch/reset API")
+            else:
+                reset()
+                result["cast_buffers"] = "reset"
+    except Exception as exc:
+        # Do not mask a sampler/interruption error. Surface failure in the trace.
+        if dynamic:
+            result["cast_buffers"] = "failed"
+        result["error"] = type(exc).__name__
+        log.warning("CineStack host buffer cleanup failed: %s", exc)
+    return result
+
+
 def cleanup_segment_vram(*, enabled: bool = True, unload_models: bool = True) -> None:
     """Release segment GPU memory: gc, optional unload of ComfyUI models, empty CUDA cache.
 
-    Also drops ComfyUI prefetch queues. Those are normally cleared once, in the
-    per-node finally, but this node loops every segment inside one execution.
-    Leaving the queues pinned makes later segments fault back to host-to-device
-    copies. Model unload policy is unchanged.
+    Finish prefetch/cast cleanup before optional model unloading, while dynamic
+    patchers are still reachable. Sampling also does this at each pass boundary
+    even when the optional inter-segment model unload is disabled.
     """
     if not enabled:
         return
@@ -59,6 +106,7 @@ def cleanup_segment_vram(*, enabled: bool = True, unload_models: bool = True) ->
     try:
         import comfy.model_management as mm
 
+        cleanup_sampling_buffers()
         mm.cleanup_models_gc()
         _evict_dead_loaded_models()
         if unload_models:
@@ -66,12 +114,6 @@ def cleanup_segment_vram(*, enabled: bool = True, unload_models: bool = True) ->
             mm.cleanup_models()
         _evict_dead_loaded_models()
         gc.collect()
-        try:
-            import comfy.model_prefetch
-
-            comfy.model_prefetch.cleanup_prefetch_queues()
-        except Exception as exc:
-            log.debug("cleanup_prefetch_queues skipped: %s", exc)
         mm.soft_empty_cache()
     except Exception as exc:
         log.warning("Segment VRAM cleanup failed: %s", exc)

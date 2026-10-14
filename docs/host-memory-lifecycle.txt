@@ -1,0 +1,75 @@
+影栈 0.6.6 — 一采逐段 Host/pinned 内存增长
+日期：2026-10-15
+
+已观察到的证据
+- 用户 0.6.5 的 19 段滚动日志（20261014_232935）成功完成。
+- 第 2–9 段 sampling_before → first_pass_sampled 约增加 1723–1788 MiB RSS；
+  对应显式统计的张量只增加约 6–9 MiB。glibc mmap 大小在这些采样前后不变。
+- segment_end RSS 从第 1 段约 47.22 GiB 升至第 9 段约 61.30 GiB，随后近上限波动。
+- 整轮 glibc 已用堆增长约 25 MiB，无法解释约 15.46 GiB 的最终 RSS 增量。
+- 最后一段色调匹配时 cgroup 峰值距 64 GiB 上限约 63.58 MiB，仍很危险。
+这些数据排除了“滚动输出画面列表按段持续保留”作为本轮主要解释，但旧诊断未直接
+统计 native pinned/HostBuffer，不能据此断言全部增量属于 pinned，也不能证明历史重启原因。
+
+代码确认的缺口
+对照用户日志中的 ComfyUI 0.40.0 官方实现：
+1. ModelPatcherDynamic.load 在动态模型加载时创建新的 LowVramPatch 对象。
+2. ops.cast_modules_with_vbar 将补丁交给 pinned_memory.pin_memory；其 HostBuffer
+   stack/bucket 强引用补丁对象，扩展缓冲区，并通过 cudaHostRegister 注册内存。
+3. cleanup_prefetch_queues 释放预取与 prepared patch 临时状态，不能替代 patch
+   HostBuffer stack 的释放。重新加载时，新对象可在仍有预算时追加分配。
+4. 官方 execution.py 节点结束 finally 依次调用 cleanup_prefetch_queues 和
+   reset_cast_buffers；后者同步 stream，清理 cast/cross-step 状态，并释放动态模型的
+   patches / patches-loaded / patches-fast 子集，保留基础 weights pin 缓存。
+5. 导演台多段都在一个节点内运行，旧版只清预取；完整节点 finally 太晚。
+   而 loaded_ram_size/pinned_memory_size 在该版只统计 weights 子集，不能拿它们
+   当补丁内存统计。这是本次修复和新增分项诊断的直接原因。
+
+源码证据（官方 v0.40.0；不依赖第三方帖子）
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/execution.py#L548-L555
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/model_management.py#L1452-L1492
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/model_patcher.py#L1895-L1960
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/model_patcher.py#L2168-L2184
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/model_patcher.py#L2092-L2150
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/ops.py#L244-L280
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/pinned_memory.py#L69-L125
+https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy/model_prefetch.py#L122-L175
+
+修复范围
+- 每次实际采样调用结束后（含异常），在 patcher 仍可访问时先清预取，再调用宿主
+  reset_cast_buffers。覆盖共用采样入口的一采、二采/N采、SelfLift 子步骤。
+- 段间清理在可选卸载模型之前执行上述步骤，避免模型已移出 loaded 列表后漏清。
+- 不直接 cudaHostUnregister、不修改模型/LoRA 数据、不全局禁用 pinned、不强制
+  malloc_trim、不清 PyTorch host allocator、不更改磁盘交换或模型卸载偏好。
+- 不更改 seed、缓存指纹、仅二采拒绝规则、滚动导出、前后边界或旧工作流 JSON。
+- 旧宿主无 AIMDO 或无相关 API 时走兼容路径。AIMDO API 缺失/失败会警告并在采样
+  after 记录 unsupported/error，不假报释放成功；预取失败时不继续强行 reset。
+- 宿主 reset 本身会同步 GPU stream，并可能让下一段重新准备补丁；不能保证完全零耗时。
+
+新增诊断
+- sampler_execute_before/after：定位实际官方 sampler 调用的增量。
+- sampler_buffers_before/after：定位补丁清理前后；异常采样也有 buffers 检查点。
+- counters.phase：区分采样阶段；counters.cleanup.cast_buffers=reset 表示宿主调用完成。
+- host_memory.total_pinned_memory：Comfy 维护的注册 pinned 总数。
+- host_memory.dynamic_models：按共享 pin_state 去重，每模型每子集记录
+  host_buffer_bytes（逻辑扩展尺寸，不是 RSS/虚拟预留量）、registered_bytes、stack_entries。
+- patches_* / weights_* 汇总分别表示临时补丁和基础权重；不要互相混淆。
+- torch_host：当前 PyTorch 支持并且 CUDA 已初始化时读取 host_memory_stats；
+  不支持为 null。它不包括所有 Comfy 直接注册内存，不能与 RSS 简单相加。
+- cast、cross-step、dirty mmap、prefetch、malloc graph 的容器数量用于观察底层缓存。
+- 每次最多 64 条 loaded model 记录，超限标 truncated；错误单独记录，不中断生成。
+- 只读取元数据，不扫描权重/全 Python 堆、不读取张量内容、不持有模型到下轮诊断。
+
+实机验收（仍需用户运行，不能用 CPU 回归替代）
+1. git pull 后重启 ComfyUI，确认运行版本 0.6.6，从干净进程运行原 19 段设置。
+2. 保留滚动生成与原模型/LoRA/分辨率/时长/连续性设置，首次对照只做一采。
+3. 收集完整控制台和输出目录 memory_diagnostics.jsonl，重点比较每段
+   sampler_buffers_before/after 的 patches_host_buffer_bytes、patches_registered_bytes、
+   stack_entries 与 RSS/cgroup delta；预期 patch 子集清理后回落，而 weights 可保留。
+4. 比较稳定模型暖机后的 segment_end。基础模型及 allocator 暖机可占内存，不能要求
+   RSS 每段精确等于初始值；但不应继续出现相同补丁子集每段约 1.7 GiB 的阶梯增长。
+5. 若 patch 归零而 RSS 仍阶梯增长，继续按 weights、torch_host、glibc、cast/graph 明细
+   分解；这说明本次缺口不是全部来源。不要把 reset 成功当作 RSS 已归还的证明。
+6. 用短 5 段回归：固定各段 seed；仅重做第 3 段并复用 2/4 边界；断一侧连接；
+   保持一采条件只切仅二采命中缓存；改变一采条件后仅二采应明确拒绝且不偷偷一采。
+   最后核查滚动整片导出、帧数、接点画面和声音。实际画面一致性须 GPU 实测。

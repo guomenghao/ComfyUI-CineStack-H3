@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.6 — 2026-10-15
+
+- Apply ComfyUI prefetch/cast buffer cleanup after each internal sampling pass, including exceptions, while patchers remain reachable. Release dynamic patch host buffers before optional model unloading; preserve base-weight pins and older-host fallback. Cover first/refine/SelfLift through their common sampler.
+- Add bounded per-model weight/patch HostBuffer and registered-pin counts, Comfy pinned totals, optional PyTorch host allocator statistics, cast/prefetch cache counts and pre/post cleanup checkpoints. Keep telemetry read-only and isolate run context on exit.
+- Add CPU lifecycle, seed/output, failure, compatibility, ownership and diagnostic regressions. Preserve strict refinement, rolling export, continuity and workflow/cache identities. Real GPU host allocation/residency acceptance remains pending. No Registry publication.
+
 ## 0.6.5 — 2026-10-14
 
 - Release obsolete decoded RGB aliases after opening grade, before seams, cache writes and export. Reuse owned export buffers for additive opening luma instead of cloning full clips again. Keep the initial grade isolation copy.

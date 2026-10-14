@@ -241,8 +241,13 @@ def sample_single_stage(
             return orig_sample(noise, latent_image, sampler, sigmas_in, **kwargs)
 
         guider.sample = sample_wrapped
+    from .memory_diagnostics import record_sampling_memory
+    from .vram_cleanup import cleanup_sampling_buffers
+
+    record_sampling_memory("sampler_execute_before", phase=phase_name)
     try:
         out = _run_official()
+        record_sampling_memory("sampler_execute_after", phase=phase_name)
     finally:
         if orig_sample is not None:
             guider.sample = orig_sample
@@ -255,6 +260,9 @@ def sample_single_stage(
                 uninstall_continue_prefix_remask(model_use)
             except Exception as exc:
                 log.debug("Prefix remask uninstall skipped: %s", exc)
+        record_sampling_memory("sampler_buffers_before", phase=phase_name)
+        cleanup_result = cleanup_sampling_buffers()
+        record_sampling_memory("sampler_buffers_after", phase=phase_name, cleanup=cleanup_result)
         # Drop sampler-graph refs. Keep a cached SigmaShift clone alive so
         # segment cleanup can unload it instead of leaving a dead LoadedModel.
         guider = None

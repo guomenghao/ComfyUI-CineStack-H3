@@ -146,6 +146,10 @@ class OfficialMiniMaxImportsTests(unittest.TestCase):
         namespace = source_definitions("director/core_sampling.py", {
             "_unpack_node_output", "_use_basic_guider", "_FixedNoise", "_ZeroNoise",
             "ShiftedModelCache", "sample_single_stage"})
+        # Extracted definitions now call package-local lifecycle/diagnostic helpers.
+        import test_segment_seed_refine_only as fixture
+        namespace.update(__name__=fixture.PKG + ".director.core_sampling",
+                         __package__=fixture.PKG + ".director")
         parent = types.ModuleType("comfy_extras")
         parent.__path__ = []
         official = types.ModuleType(OFFICIAL)

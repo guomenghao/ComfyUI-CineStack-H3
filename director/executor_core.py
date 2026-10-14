@@ -2208,6 +2208,8 @@ def _execute_director_plan_core(
 
 def execute_director_plan_core(plan, **kwargs):
     """Always close persistent rolling encoders, including on host interruption."""
+    from .memory_diagnostics import SAMPLING_PLAN
+    token = SAMPLING_PLAN.set(plan)
     try:
         return _execute_director_plan_core(plan, **kwargs)
     except BaseException:
@@ -2220,6 +2222,7 @@ def execute_director_plan_core(plan, **kwargs):
             log.error("滚动生成已停止；已保存的一采缓存和编码片段保留在 %s", active.root)
         raise
     finally:
+        SAMPLING_PLAN.reset(token)
         diagnostics = getattr(plan, "_active_memory_diagnostics", None)
         if diagnostics is not None:
             diagnostics.record("execution_exit")
