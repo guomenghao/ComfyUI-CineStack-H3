@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 
+def rolling_enabled(plan) -> bool:
+    output = (getattr(plan, "raw", None) or {}).get("output") or {}
+    return output.get("rollingGeneration", False) is True
+
+
 def low_memory_enabled(plan) -> bool:
     output = (getattr(plan, "raw", None) or {}).get("output") or {}
-    return output.get("lowMemoryMode", False) is True
+    return output.get("lowMemoryMode", False) is True or rolling_enabled(plan)
 
 
 def disk_export_enabled(plan) -> bool:

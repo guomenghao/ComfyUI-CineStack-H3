@@ -6,6 +6,11 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Rolling generation (0.4.0)
+
+Enable **Rolling generation · current + previous** in output settings. The predecessor stays in memory until its successor has completed guidance, phase trimming and seam correction, then enters a persistent video encoder. Full RGB caches and per-segment/intermediate MP4s are skipped; first-pass AV caches, exact segment seeds and strict second-pass validation remain.
+For a fixed canvas, each output stage is encoded continuously; the final audio mux copies the encoded video stream. Canvas changes use bounded parts and require normalization. Only executed segments are delivered; full IMAGE/AUDIO sockets are blocked. See report paths and [details](docs/rolling-generation.txt). Legacy workflows and the 0.3.0 disk mode keep their previous defaults.
+
 ## Features
 
 - Multi-segment H3 audiovisual timelines, external groups and Director packs.
@@ -42,7 +47,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.3.0 includes low-memory disk delivery plus the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.4.0 includes rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

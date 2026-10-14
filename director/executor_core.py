@@ -86,6 +86,7 @@ from .segment_cache import (
     resolve_segment_cache_key,
     save_first_pass_cache,
     save_segment_cache,
+    update_rolling_handoff,
 )
 from .segment_mp4_export import (
     copy_segment_mp4_suffix,
@@ -103,7 +104,8 @@ from .segment_continuity import (
     resolve_prev_segment_output,
 )
 from .vram_cleanup import cleanup_segment_vram
-from .execution_mode import low_memory_enabled
+from .execution_mode import low_memory_enabled, rolling_enabled
+from .rolling import RollingRun
 from .low_memory import LowMemoryRun, validate_low_memory, ram_snapshot
 
 from .refine_only import validate_refine_only_cache
@@ -120,6 +122,8 @@ def _segment_disk_cache_needed(
     hold_after_first: bool,
 ) -> bool:
     """Disk cache is for partial re-run / refine / continuity — not single-shot r2v."""
+    if rolling_enabled(plan):
+        return True  # Persist AV once; the cache helper skips full RGB.
     if low_memory_enabled(plan) or will_refine or hold_after_first:
         return True
     from .face_refine.pack import face_refine_enabled
@@ -417,7 +421,7 @@ def _ref_video_audios_to_dict(items) -> dict | None:
     return out or None
 
 
-def execute_director_plan_core(
+def _execute_director_plan_core(
     plan: DirectorPlan,
     *,
     node_id: str | None = None,
@@ -458,6 +462,7 @@ def execute_director_plan_core(
 
     execution_mode = apply_director_execution_mode(plan)
     low_memory = low_memory_enabled(plan)
+    rolling = rolling_enabled(plan)
     node_id = resolve_segment_cache_key(cache_name, node_id)
     plan.sample_seed = int(seed)
     plan.sample_cfg = float(cfg)
@@ -529,10 +534,16 @@ def execute_director_plan_core(
             "BasicGuider/CFGGuider → SamplerCustomAdvanced."
         )
     # One timestamp folder per execute so all segments of this run stay together.
-    mp4_run_dir = new_segment_mp4_run_dir(plan)
-    plan.segment_mp4_run_dir = str(mp4_run_dir) if mp4_run_dir is not None else None
-    disk_run = LowMemoryRun(plan, mp4_run_dir) if low_memory else None
-    if low_memory:
+    output_run_dir = new_segment_mp4_run_dir(plan)
+    plan.segment_mp4_run_dir = str(output_run_dir) if output_run_dir is not None else None
+    mp4_run_dir = None if rolling else output_run_dir
+    disk_run = LowMemoryRun(plan, mp4_run_dir) if low_memory and not rolling else None
+    rolling_run = RollingRun(plan, output_run_dir) if rolling else None
+    if rolling_run:
+        plan._active_rolling_run = rolling_run
+    if rolling:
+        reports.append("RAM: 滚动生成已开启；保留当前段＋上一段，接缝完成后连续编码，完整 IMAGE/AUDIO 输出阻断。")
+    elif low_memory:
         reports.append("RAM: 低内存落盘已开启；本轮选中段逐段保存，禁止整片 IMAGE/AUDIO 张量输出。")
     if mp4_run_dir is not None:
         reports.append(f"Segment mp4 export dir: {mp4_run_dir}")
@@ -632,6 +643,19 @@ def execute_director_plan_core(
     segment_export_lengths: dict[int, int] = {}
     export_segments_mode = plan.export_mode == "segments" or low_memory
 
+    def _flush_rolling(index):
+        if rolling_run is None or index not in rolling_run.pending:
+            return
+        previous = all_segments[index]
+        frames = completed_outputs[index]
+        if rolling_run.pending[index].get("handoff") != completed_av_handoff.get(index):
+            update_rolling_handoff(node_id, previous, plan, completed_av_handoff.get(index),
+                                   completed_audios.get(index))
+        rolling_run.flush(previous, frames, completed_pre_refine.get(index),
+            completed_pre_face.get(index) if export_pre_face_refine else None,
+            completed_audios.get(index))
+        reports.append(f"Segment {previous.timeline_index + 1}: rolling stream committed ({frames.shape[0]} frames)")
+
     def _run_one_segment(
         seg, *, progress_index: int
     ) -> tuple[torch.Tensor, dict[str, Any] | None, torch.Tensor, torch.Tensor]:
@@ -658,7 +682,7 @@ def execute_director_plan_core(
 
         run_face_refine = _face_refine_on(plan)
         pre_cache = (
-            load_first_pass_cache(node_id, seg, plan, raise_on_error=strict_refine)
+            load_first_pass_cache(node_id, seg, plan, include_frames=not rolling, raise_on_error=strict_refine)
             if strict_refine or (confirm_first and will_refine) or run_face_refine
             else None
         )
@@ -783,6 +807,20 @@ def execute_director_plan_core(
                 )
                 if prev_audio is not None:
                     completed_audios[prev_idx] = prev_audio
+            if rolling and prev_tail is None and prev_av is not None:
+                # A prior rolling run persists AV instead of full RGB. Re-decode
+                # just this predecessor, once, for exact grade/phase semantics.
+                restored, restored_audio = _decode_av_latent(prev_av, vae, audio_vae, decode_audio=decode_audio)
+                info = prev_handoff or {}
+                restored, restored_audio = _trim_decoded_to_export(restored, restored_audio,
+                    trim_frames=int(info.get("trim_frames") or 0),
+                    export_len=int(info.get("export_frames") or restored.shape[0]), plan=plan)
+                prev_tail = restored.detach().cpu().float()
+                completed_outputs[prev_idx] = prev_tail
+                if restored_audio is not None and prev_audio is None:
+                    prev_audio = restored_audio
+                    completed_audios[prev_idx] = prev_audio
+                del restored, restored_audio
             if prev_av is None and prev_tail is None:
                 reports.append(
                     f"Segment {seg.index + 1}/{timeline_seg_total}: "
@@ -1064,16 +1102,22 @@ def execute_director_plan_core(
                         prev_handoff["export_frames"] = int(prev_chunk.shape[0])
                         prev_handoff["phase_align_trim"] = int(prev_export_trim)
                         completed_av_handoff[prev_idx] = prev_handoff
-                        save_segment_cache(
-                            node_id,
-                            prev_seg,
-                            plan,
-                            prev_chunk,
-                            av_latent=completed_av_latents.get(prev_idx),
-                            handoff=prev_handoff,
-                            audio=completed_audios.get(prev_idx),
-                            replace_audio=False,
-                        )
+                        if not rolling:
+                            save_segment_cache(
+                                node_id,
+                                prev_seg,
+                                plan,
+                                prev_chunk,
+                                av_latent=completed_av_latents.get(prev_idx),
+                                handoff=prev_handoff,
+                                audio=completed_audios.get(prev_idx),
+                                replace_audio=False,
+                            )
+                        elif prev_idx not in rolling_run.pending:
+                            # A cached, unselected predecessor has no deferred
+                            # output flush; commit its cut metadata now.
+                            update_rolling_handoff(node_id, prev_seg, plan, prev_handoff,
+                                                   completed_audios.get(prev_idx))
                         # Rewrite incremental mp4 so mid-run files match trimmed length.
                         previous_hold = (disk_run.entries.get(prev_idx, {}).get("hold", hold_after_first)
                                          if disk_run else hold_after_first)
@@ -1301,6 +1345,9 @@ def execute_director_plan_core(
                 shift_cache=shift_cache,
             )
 
+        cached_export_limit = 0
+        if rolling and skip_first_sample and (pre_cache.get("handoff") or {}).get("phase_align_trim"):
+            cached_export_limit = int(pre_cache["handoff"].get("export_frames") or 0)
         first_pass_samples = samples
         completed_first_pass_av[seg.index] = first_pass_samples
         if low_memory and not skip_first_sample:
@@ -1366,6 +1413,8 @@ def execute_director_plan_core(
             target_len=target_len,
             keep_tail=bool(getattr(plan, "continuity_keep_tail", True)),
         )
+        if cached_export_limit > 0:
+            export_len = min(export_len, cached_export_limit)
         if (will_refine or continuity_active or run_face_refine or selflift_enabled(plan)
                 or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample and not low_memory:
             save_first_pass_cache(
@@ -1488,6 +1537,8 @@ def execute_director_plan_core(
             target_len=target_len,
             keep_tail=bool(getattr(plan, "continuity_keep_tail", True)),
         )
+        if cached_export_limit > 0:
+            export_len = min(export_len, cached_export_limit)
         decoded, audio_dict = _trim_decoded_to_export(
             decoded,
             audio_dict,
@@ -1641,20 +1692,21 @@ def execute_director_plan_core(
             chunk, pre_chunk, pre_face_chunk = corrected
             previous_seg = all_segments[prev_idx]
             previous_frames = completed_outputs[prev_idx]
-            save_segment_cache(node_id, previous_seg, plan, previous_frames,
-                av_latent=completed_av_latents.get(prev_idx), handoff=completed_av_handoff.get(prev_idx),
-                audio=completed_audios.get(prev_idx), replace_audio=False)
-            if disk_run.entries[prev_idx]["hold"]:
-                maybe_export_segment_mp4(mp4_run_dir, plan, previous_seg, previous_frames,
-                                         completed_audios.get(prev_idx), suffix="pre")
-            else:
-                maybe_export_segment_mp4s(mp4_run_dir, plan, previous_seg, previous_frames,
-                    completed_audios.get(prev_idx), pre_frames=completed_pre_refine.get(prev_idx),
-                    pre_face_frames=completed_pre_face.get(prev_idx) if export_pre_face_refine else None)
-                previous_passes = disk_run.entries[prev_idx].get("refine_passes", 1)
-                if previous_passes > 1:
-                    copy_segment_mp4_suffix(mp4_run_dir, plan, previous_seg,
-                                            dest_suffix=f"p{previous_passes}")
+            if not rolling:
+                save_segment_cache(node_id, previous_seg, plan, previous_frames,
+                    av_latent=completed_av_latents.get(prev_idx), handoff=completed_av_handoff.get(prev_idx),
+                    audio=completed_audios.get(prev_idx), replace_audio=False)
+                if disk_run.entries[prev_idx]["hold"]:
+                    maybe_export_segment_mp4(mp4_run_dir, plan, previous_seg, previous_frames,
+                                             completed_audios.get(prev_idx), suffix="pre")
+                else:
+                    maybe_export_segment_mp4s(mp4_run_dir, plan, previous_seg, previous_frames,
+                        completed_audios.get(prev_idx), pre_frames=completed_pre_refine.get(prev_idx),
+                        pre_face_frames=completed_pre_face.get(prev_idx) if export_pre_face_refine else None)
+                    previous_passes = disk_run.entries[prev_idx].get("refine_passes", 1)
+                    if previous_passes > 1:
+                        copy_segment_mp4_suffix(mp4_run_dir, plan, previous_seg,
+                                                dest_suffix=f"p{previous_passes}")
             # Pair-processing temporaries must not retain old full-frame storage.
             del stages, pairs, corrected, previous_frames, previous_fixed, current_fixed, current_frames
         handoff = {
@@ -1730,6 +1782,10 @@ def execute_director_plan_core(
                 f"{mp4_export_kind(mp4_path)} saved → {mp4_path}"
             )
 
+        if rolling_run:
+            rolling_run.stage(seg, hold=hold_after_first, first_only=execution_mode == "first_pass",
+                              refined=run_refine, face_refined=run_face_refine and not hold_after_first,
+                              handoff=handoff)
         if disk_run:
             disk_run.record(seg, chunk, pre_chunk, hold=hold_after_first,
                             first_only=execution_mode == "first_pass", refined=run_refine,
@@ -1796,6 +1852,13 @@ def execute_director_plan_core(
                 )
             finally:
                 _release_segment_file_ref_audios(plan, seg)
+            if rolling_run:
+                # The successor has now used and corrected its predecessor.
+                for pending in tuple(rolling_run.pending):
+                    if pending != seg.index:
+                        _flush_rolling(pending)
+                if seg.index + 1 not in run_indices:
+                    _flush_rolling(seg.index)
             segment_outputs.append(chunk)
             segment_pre_refine.append(pre_chunk)
             segment_pre_face.append(pre_face_chunk)
@@ -1819,8 +1882,11 @@ def execute_director_plan_core(
             if low_memory:
                 # A model clone carrying per-segment LoRAs must not live for the
                 # whole timeline. Unload before dropping patcher references.
-                cleanup_segment_vram(enabled=True, unload_models=True)
-                shift_cache.clear()
+                if not rolling or describe_lora_rows(getattr(seg, "loras", None)):
+                    cleanup_segment_vram(enabled=True, unload_models=True)
+                    shift_cache.clear()
+                else:
+                    cleanup_segment_vram(enabled=True, unload_models=False)
                 rss = ram_snapshot()
                 log.info("CineStack RAM: segment %d saved; previous pixels released; RSS=%s MiB",
                          seg.timeline_index + 1, "n/a" if rss is None else f"{rss / 1024**2:.1f}")
@@ -1934,7 +2000,7 @@ def execute_director_plan_core(
     if not output_chunks and not segment_outputs:
         raise ValueError("Director plan produced no segments.")
 
-    if disk_run:
+    if disk_run or rolling_run:
         # Continuity/phase trimming has finished. All media is durable now;
         # release the final working set before invoking the disk-only merger.
         for index in tuple(completed_outputs):
@@ -1947,7 +2013,7 @@ def execute_director_plan_core(
             working_set.clear()
         segment_audios.clear()
         gc.collect()
-        reports.extend(disk_run.finish())
+        reports.extend((rolling_run or disk_run).finish())
         report_director_finish(progress_node_id, seg_total)
         shift_cache.clear()
         poster = torch.full((1, 2, 2, 3), 0.5)
@@ -2078,3 +2144,18 @@ def execute_director_plan_core(
         pre_face_combined,
         segment_pre_face,
     )
+
+
+def execute_director_plan_core(plan, **kwargs):
+    """Always close persistent rolling encoders, including on host interruption."""
+    try:
+        return _execute_director_plan_core(plan, **kwargs)
+    except BaseException:
+        active = getattr(plan, "_active_rolling_run", None)
+        if active is not None:
+            active.abort()
+            log.error("滚动生成已停止；已保存的一采缓存和编码片段保留在 %s", active.root)
+        raise
+    finally:
+        if hasattr(plan, "_active_rolling_run"):
+            del plan._active_rolling_run

@@ -2,6 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
+## 滚动生成（0.4.0）
+
+在输出设置中勾选 **滚动生成（当前段＋上一段）**。前段完成下一段引导、尾帧裁剪和接缝处理后，才送入持续视频编码器并释放画面；不累计整条时间轴的 RGB。
+与 0.3.0 低内存落盘相比，滚动模式不写逐段/中间精修 MP4 或完整 RGB 缓存，固定画布下每个输出阶段只持续编码一次，结束时复制视频流封装音频。
+一采 AV 缓存、分段独立 seed、严格仅二采和原连贯策略保留。只交付本轮选中段，完整 IMAGE/AUDIO 输出阻断；视频与 `manifest.json` 的绝对路径见报告。
+旧工作流默认不开启，原低内存模式继续可选。详细限制、部分阶段与中断恢复见 [滚动生成说明](docs/rolling-generation.txt)。
+
 ## 低内存落盘（0.3.0）
 
 在输出设置中勾选 **低内存落盘**，逐段保存视频和一采缓存，保留必要的上一段连贯数据后释放旧段画面；从磁盘分别合并一采/成片。
@@ -94,7 +101,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.3.0` 包含低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.4.0` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

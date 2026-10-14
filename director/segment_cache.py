@@ -31,7 +31,7 @@ from .h3_motion_context import CONTINUITY_PIPELINE_ID, trim_context_prefix, trim
 from .plan import DirectorPlan, SegmentPlan, resolve_ref_image_size
 from .segment_seed import resolve_segment_seed, seed_from_group
 from .segment_loras import effective_lora_rows
-from .execution_mode import low_memory_enabled
+from .execution_mode import low_memory_enabled, rolling_enabled
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director.cache")
 
@@ -625,8 +625,13 @@ def save_segment_cache(
     handoff_path = root / f"seg_{idx:04d}.handoff.json"
     audio_path = root / f"seg_{idx:04d}.audio.pt"
     try:
-        payload = _frames_to_disk(tensor, bounded=strict)
-        _store_segment_frames(root, idx, payload, first_pass=False, plan=plan)
+        if rolling_enabled(plan):
+            # AV + handoff are enough for reuse; never leave old pixels beside a new AV.
+            _drop_legacy_frames(root, idx, first_pass=False)
+            _drop_ffv1_frames(root, idx, first_pass=False)
+        else:
+            payload = _frames_to_disk(tensor, bounded=strict)
+            _store_segment_frames(root, idx, payload, first_pass=False, plan=plan)
         text = json.dumps(fp, ensure_ascii=False, sort_keys=True)
         _write_via_temp(
             meta_path,
@@ -1042,6 +1047,30 @@ def load_segment_audio(
     except Exception as exc:
         log.warning("Failed to load segment %d audio cache: %s", seg.index + 1, exc)
         return None
+
+
+def update_rolling_handoff(node_id, seg, plan, handoff, audio):
+    """Phase trim changes only metadata/PCM, never rewrite the large AV payload."""
+    root = _cache_root(node_id)
+    if root is None:
+        raise RuntimeError("滚动生成：无法更新连贯缓存目录")
+    try:
+        _write_via_temp(root / f"seg_{seg.index:04d}.handoff.json",
+            lambda p: p.write_text(json.dumps(handoff, sort_keys=True), encoding="utf-8"))
+        # Old whole-RGB data cannot describe the newly committed cut.
+        _drop_legacy_frames(root, seg.index, first_pass=False)
+        _drop_ffv1_frames(root, seg.index, first_pass=False)
+        first_handoff = root / f"seg_{seg.index:04d}.pre.handoff.json"
+        if first_handoff.is_file():
+            first = json.loads(first_handoff.read_text(encoding="utf-8"))
+            first["export_frames"] = int(handoff["export_frames"])
+            first["phase_align_trim"] = int(handoff.get("phase_align_trim") or 0)
+            _write_via_temp(first_handoff, lambda p: p.write_text(json.dumps(first, sort_keys=True), encoding="utf-8"))
+        audio_cpu = _audio_payload_to_cpu(audio)
+        if audio_cpu is not None:
+            _write_via_temp(root / f"seg_{seg.index:04d}.audio.pt", lambda p: torch.save(audio_cpu, p))
+    except Exception as exc:
+        raise RuntimeError(f"滚动生成：第 {seg.timeline_index + 1} 段连贯记录更新失败：{exc}") from exc
 
 
 def save_first_pass_cache(

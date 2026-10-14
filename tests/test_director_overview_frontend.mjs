@@ -153,6 +153,18 @@ try {
   await lowMemory.uncheck();
   check(!(await page.locator('[data-r="out-export-mode"]').isDisabled()),'disabling disk mode restores legacy export controls');
   await lowMemory.check();
+  const rolling=page.locator('[data-r="out-rolling-generation"]');
+  check(!(await rolling.isChecked()),'legacy workflows do not automatically enable rolling');
+  await rolling.check();
+  check(!(await lowMemory.isChecked()),'rolling replaces the heavy disk-export choice');
+  check(await page.evaluate(()=>JSON.parse(editor.timelineWidget.value).output.rollingGeneration)===true,'rolling is serialized exactly in timeline output');
+  check((await page.locator('.cs-message').innerText()).includes('滚动生成'),'workbench explains current plus previous delivery');
+  check(await page.locator('[data-r="out-export-mode"]').isDisabled(),'rolling makes file-only output explicit');
+  await lowMemory.check();
+  check(!(await rolling.isChecked()),'selecting legacy disk mode disables rolling');
+  await lowMemory.uncheck();
+  check(!(await page.locator('[data-r="out-export-mode"]').isDisabled()),'turning off both memory modes restores normal export');
+  await rolling.check();
   await page.locator('.cs-row').nth(3).locator('.cs-title').click();
   check(await page.evaluate(()=>editor.selectedIndex)===3,'overview navigates existing segment editor');
   await page.evaluate(()=>{editor.selectedIndex=0;editor.renderImageBatchGroups()});
@@ -172,7 +184,8 @@ try {
     const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
     const {setLocale}=await import('/web/js/minimax_i18n.js');
     setLocale('en');check(editor.overview.root.textContent.includes('Segment workbench'),'overview follows English locale');
-    check(editor.root.textContent.includes('Low RAM'),'disk-mode label follows English locale');setLocale('zh');
+    check(editor.root.textContent.includes('Low RAM'),'disk-mode label follows English locale');
+    check(editor.root.textContent.includes('Rolling generation'),'rolling label follows English locale');setLocale('zh');
     const raw={version:5,timelineMode:'fl2v',editMode:'segment',frameRate:24,global:{taskType:'fl2v'},
       output:{mode:'fixed',width:864,height:480,audioMode:'generate'},
       shots:[{id:'s1',durationSec:5,prompt:'first',first_pass_seed:'0'},{id:'s2',durationSec:5,prompt:'second',first_pass_seed:'200'}]};

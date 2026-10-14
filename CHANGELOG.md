@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-14
+
+- Add optional `output.rollingGeneration`, with current/predecessor working data and no full-timeline RGB concat. Preserve the 0.3.0 disk mode and legacy defaults.
+- Delay predecessor output until successor guidance, phase trimming and seam correction finish. Continuously encode each stage, then mux audio with video stream copy. Reuse encoding when unrefined first/final output is identical.
+- Persist first/final AV and handoff data, skip full RGB caches, avoid intermediate refine-pass decoding/MP4 export, and update only small metadata/PCM after phase trimming.
+- Preserve committed first-pass phase cuts during strict second-pass reuse. Reconstruct only the required predecessor from AV for partial runs without RGB caches.
+- Keep exact independent seeds, strict mismatch rejection, selected-run scope, face-before output and external-group/pack settings. Report partial stage output explicitly rather than mixing first/final stages.
+- Close continuous encoders on exceptions/interruption; retain first AV caches and available Matroska/PCM fragments. Final MP4s require successful completion; GPU/RSS/wall-time acceptance remains device-specific.
+- Add real FFmpeg, 20-segment bounded-storage/one-encoder, continuity pixel/length, first-to-second phase, audio, geometry, partial-run, failure and browser regressions. See docs/rolling-generation.txt.
+
 ## 0.3.0 — 2026-10-14
 
 - Add opt-in `output.lowMemoryMode` (default off) across Director UI, external groups and packs. Existing positional widgets, node IDs and normal output behavior remain intact.

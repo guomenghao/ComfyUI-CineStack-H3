@@ -3090,6 +3090,10 @@ class CineStackH3DirectorEditor {
                 <input type="checkbox" data-r="out-low-memory">
                 <span data-i18n="output.lowMemoryMode">低内存落盘</span>
             </label>
+            <label data-i18n-title="tooltip.rollingGeneration">
+                <input type="checkbox" data-r="out-rolling-generation">
+                <span data-i18n="output.rollingGeneration">滚动生成（当前段＋上一段）</span>
+            </label>
             <span class="hidden" data-r="out-max-frames-wrap" hidden aria-hidden="true">
                 <label data-i18n="output.maxFrames">最大帧数</label>
                 <input type="number" class="bd-num" data-r="out-max-frames" min="0" max="999999" step="1" value="0" style="width:64px">
@@ -3453,6 +3457,7 @@ class CineStackH3DirectorEditor {
         this.outMaxFrames = this.root.querySelector('[data-r="out-max-frames"]');
         this.outExportMode = this.root.querySelector('[data-r="out-export-mode"]');
         this.outLowMemory = this.root.querySelector('[data-r="out-low-memory"]');
+        this.outRolling = this.root.querySelector('[data-r="out-rolling-generation"]');
         this.segmentContinuityWrap = this.root.querySelector('[data-r="segment-continuity-wrap"]');
         this.segmentContinuityCb = this.root.querySelector('[data-r="segment-continuity-cb"]');
         this.segmentContinuityOverlap = this.root.querySelector('[data-r="segment-continuity-overlap"]');
@@ -3771,6 +3776,7 @@ class CineStackH3DirectorEditor {
         this.outMaxFrames.onchange = () => this.onOutputField("maxExportFrames", +this.outMaxFrames.value);
         this.outExportMode.onchange = () => this.onOutputField("exportMode", this.outExportMode.value);
         this.outLowMemory.onchange = () => this.onOutputField("lowMemoryMode", this.outLowMemory.checked);
+        this.outRolling.onchange = () => this.onOutputField("rollingGeneration", this.outRolling.checked);
         if (this.outAudioMode) {
             this.outAudioMode.onchange = () => this.onOutputField("audioMode", this.outAudioMode.value);
         }
@@ -4439,7 +4445,7 @@ class CineStackH3DirectorEditor {
             this.runSelectSummary.style.color = "#aaa";
         } else {
             const nums = (this.timeline.runSelection || []).map((i) => i + 1).join(", ");
-            const exportHint = this.timeline.output?.exportMode === "segments" || this.timeline.output?.lowMemoryMode
+            const exportHint = this.timeline.output?.exportMode === "segments" || this.timeline.output?.lowMemoryMode || this.timeline.output?.rollingGeneration
                 ? t("runSelect.exportOnlyChecked")
                 : t("runSelect.fillUnchecked");
             this.runSelectSummary.textContent = count === 1
@@ -6622,8 +6628,9 @@ class CineStackH3DirectorEditor {
         if (this.outMaxFrames) this.outMaxFrames.value = String(out.maxExportFrames ?? 0);
         if (this.outExportMode) this.outExportMode.value = out.exportMode === "segments" ? "segments" : "all";
         if (this.outLowMemory) this.outLowMemory.checked = out.lowMemoryMode === true;
-        if (this.outExportMode) this.outExportMode.disabled = out.lowMemoryMode === true;
-        if (this.exportSourceImagesCb) this.exportSourceImagesCb.disabled = out.lowMemoryMode === true;
+        if (this.outRolling) this.outRolling.checked = out.rollingGeneration === true;
+        if (this.outExportMode) this.outExportMode.disabled = out.lowMemoryMode === true || out.rollingGeneration === true;
+        if (this.exportSourceImagesCb) this.exportSourceImagesCb.disabled = out.lowMemoryMode === true || out.rollingGeneration === true;
         if (this.outAudioMode) {
             const am = normalizeAudioMode(out.audioMode);
             this.outAudioMode.value = am;
@@ -7017,6 +7024,10 @@ class CineStackH3DirectorEditor {
             this.timeline.output.exportMode = value === "segments" ? "segments" : "all";
         } else if (key === "lowMemoryMode") {
             this.timeline.output.lowMemoryMode = value === true;
+            if (value === true) this.timeline.output.rollingGeneration = false;
+        } else if (key === "rollingGeneration") {
+            this.timeline.output.rollingGeneration = value === true;
+            if (value === true) this.timeline.output.lowMemoryMode = false;
         } else if (key === "audioMode") {
             this.timeline.output.audioMode = normalizeAudioMode(value);
         } else if (key === "continuityEnabled") {

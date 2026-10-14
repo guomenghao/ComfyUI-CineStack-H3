@@ -18,3 +18,5 @@ CineStack modifications, 2026-10-13, maintained in guomenghao/ComfyUI-CineStack-
 
 Original copyright, license notices and acknowledgments remain applicable.
 This is an independent derivative; it is not an AIMixer or ComfyUI official product.
+
+2026-10-14 (0.4.0): add opt-in rolling generation with continuous encoding, deferred seam/phase commit, AV-only caching and compatibility regressions.
