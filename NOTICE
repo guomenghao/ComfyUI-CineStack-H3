@@ -20,3 +20,5 @@ Original copyright, license notices and acknowledgments remain applicable.
 This is an independent derivative; it is not an AIMixer or ComfyUI official product.
 
 2026-10-14 (0.4.0): add opt-in rolling generation with continuous encoding, deferred seam/phase commit, AV-only caching and compatibility regressions.
+
+2026-10-14 (0.4.1): fix delayed-export reference PCM retention, strict handoff validation and encoder cleanup; extend rolling regression coverage.

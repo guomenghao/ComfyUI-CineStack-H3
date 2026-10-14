@@ -120,10 +120,12 @@ class FrameStream:
                 self.proc.wait()
             raise
         finally:
-            if self.wav:
-                self.wav.close()
+            try:
+                if self.wav:
+                    self.wav.close()
+            finally:
                 self.wav = None
-            self.errors.close()
+                self.errors.close()
 
     def finish(self):
         self._close()

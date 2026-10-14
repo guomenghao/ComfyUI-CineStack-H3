@@ -1329,6 +1329,10 @@ def load_first_pass_cache(
             try:
                 data = json.loads(handoff_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
+                    if raise_on_error:
+                        for key in ("trim_frames", "export_frames", "sample_frames", "phase_align_trim"):
+                            if key in data and (type(data[key]) is not int or data[key] < 0):
+                                raise ValueError(f"handoff.{key} 必须是非负整数，实际={data[key]!r}")
                     handoff = data
                 elif raise_on_error:
                     raise ValueError("handoff 元数据不是对象")

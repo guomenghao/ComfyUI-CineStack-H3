@@ -651,9 +651,14 @@ def _execute_director_plan_core(
         if rolling_run.pending[index].get("handoff") != completed_av_handoff.get(index):
             update_rolling_handoff(node_id, previous, plan, completed_av_handoff.get(index),
                                    completed_audios.get(index))
-        rolling_run.flush(previous, frames, completed_pre_refine.get(index),
-            completed_pre_face.get(index) if export_pre_face_refine else None,
-            completed_audios.get(index))
+        try:
+            rolling_run.flush(previous, frames, completed_pre_refine.get(index),
+                completed_pre_face.get(index) if export_pre_face_refine else None,
+                completed_audios.get(index))
+        finally:
+            # Source/fallback audio can be materialized again during delayed
+            # export, after the sampling-side finally already released it.
+            _release_segment_file_ref_audios(plan, previous)
         reports.append(f"Segment {previous.timeline_index + 1}: rolling stream committed ({frames.shape[0]} frames)")
 
     def _run_one_segment(

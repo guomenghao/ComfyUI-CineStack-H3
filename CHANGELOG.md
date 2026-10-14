@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 — 2026-10-14
+
+- Release per-segment file-backed reference PCM again after deferred rolling export, including failures; preserve shared/global audio slots. Fix accumulation when source/fallback audio is rematerialized after sampling cleanup.
+- Validate strict first-pass handoff frame fields before any batch refinement. Reject strings, fractions, booleans and negative frame values with segment/field diagnostics; retain legacy missing-field compatibility.
+- Close encoder logs and clear WAV handles even if audio finalization fails (for example, disk full).
+- Add seven regressions for real reference-audio export/release, invalid later handoffs, disk-full cleanup, nonadjacent selection, cancellation/shared slots, fractional FPS/odd canvases and 20 refined segments with bounded pixel retention.
+- See docs/retest-0.4.1-2026-10-14.txt for verification scope and remaining hardware limitations.
+
 ## 0.4.0 — 2026-10-14
 
 - Add optional `output.rollingGeneration`, with current/predecessor working data and no full-timeline RGB concat. Preserve the 0.3.0 disk mode and legacy defaults.

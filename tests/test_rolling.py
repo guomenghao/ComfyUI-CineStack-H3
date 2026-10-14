@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import unittest
 import weakref
+import wave
 from unittest import mock
 
 spec = importlib.util.spec_from_file_location("rolling_fixture", Path(__file__).with_name("test_segment_seed_refine_only.py"))
@@ -254,6 +255,124 @@ class RollingTests(unittest.TestCase):
                 self.execute(plan, _decode_av_latent=lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("decode OOM")))
             encoder.assert_not_called()
         self.assertIsNone(f.cache.first_pass_cache_problem("fixture", plan.segments[0], plan))
+
+    def test_source_reference_audio_is_released_after_deferred_export(self):
+        plan = self.build((100,) * 6)
+        plan.global_task_key = "r2v"
+        plan.raw["output"]["audioMode"] = "source"
+        for seg in plan.segments:
+            path = self.case.output / f"reference-{seg.index}.wav"
+            with wave.open(str(path), "wb") as output:
+                output.setparams((2, 2, 44100, 0, "NONE", "not compressed"))
+                output.writeframes(b"\0" * 44100 * 4)
+            seg.ref_audios = [f.plan_module.SegmentRefAudio(0, audio_path=str(path))]
+        live = []
+        def condition(**kw):
+            live.append(sum(ref.audio is not None for seg in plan.segments for ref in seg.ref_audios))
+            return [], [], {"samples": f.torch.zeros(1, 2, 1, 2, 2)}, "audio"
+        self.execute(plan, run_cineStack_conditioning=condition)
+        self.assertEqual(live, [0] * 6)
+        self.assertTrue(all(ref.audio is None for seg in plan.segments for ref in seg.ref_audios))
+        self.assertEqual(plan.audio_decode_cache, {})
+        output = subprocess.run([video._ffmpeg_bin(), "-i", str(Path(plan.segment_mp4_run_dir) / "first_pass.mp4")], stderr=subprocess.PIPE)
+        self.assertIn(b"Audio:", output.stderr)
+
+    def test_invalid_later_handoff_stops_before_any_refinement(self):
+        plan = self.build((100, 200), "refine_only")
+        self.case.store(plan)
+        path = f.cache._cache_dir("fixture") / "seg_0001.pre.handoff.json"
+        for invalid in ("broken", -1, True, 1.5):
+            with self.subTest(invalid=invalid):
+                path.write_text(json.dumps({"trim_frames": invalid}))
+                first, second = [], []
+                with self.assertRaisesRegex(ValueError, "第 2 段.*handoff"):
+                    self.execute(plan, first, second)
+                self.assertEqual((first, second), ([], []))
+
+    def test_wav_finalization_failure_also_closes_encoder_log(self):
+        writer = stream.FrameStream(self.case.output, "close-failure", width=32, height=32, fps=24)
+        writer.append(f.torch.zeros(5, 32, 32, 3))
+        original = writer.wav
+        try:
+            with mock.patch.object(original, "close", side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    writer.finish()
+                self.assertTrue(writer.errors.closed)
+                self.assertIsNone(writer.wav)
+                self.assertIsNotNone(writer.proc.poll())
+        finally:
+            original.close()
+            writer.abort()
+
+    def test_nonadjacent_selection_exports_only_selected_in_order(self):
+        plan = self.build((100, 200, 300, 400, 500))
+        plan.run_indices = frozenset({0, 2, 4})
+        first = []
+        result = self.execute(plan, first)
+        self.assertEqual(first, [100, 300, 500])
+        self.assertEqual(result[4], [5, 5, 5])
+        root = Path(plan.segment_mp4_run_dir)
+        meta = json.loads((root / "manifest.json").read_text())
+        self.assertEqual([e["segment"] for e in meta["segments"]], [1, 3, 5])
+        self.assertEqual([e["first"]["start_frame"] for e in meta["segments"]], [0, 5, 10])
+        self.assertEqual(self.pixels(root / "first_pass.mp4").shape[0], 15)
+
+    def test_interrupt_releases_export_audio_but_keeps_global_slots(self):
+        plan = self.build((100,))
+        local = f.plan_module.SegmentRefAudio(0, audio_path="local.wav")
+        shared = f.plan_module.SegmentRefAudio(1, audio_path="global.wav")
+        plan.global_ref_audios = [shared]
+        plan.segments[0].ref_audios = [local, shared]
+        writers = []
+        original = roll.FrameStream
+        class Interrupted(original):
+            def append(self, frames, audio=None):
+                writers.append(self)
+                raise KeyboardInterrupt("cancelled")
+        def prepare(*args, **kwargs):
+            for ref in (local, shared):
+                ref.audio = {"waveform": f.torch.zeros(1, 2, 1000), "sample_rate": 48000}
+                plan.audio_decode_cache[ref.audio_path] = ref.audio
+            return local.audio
+        with mock.patch.object(roll, "FrameStream", Interrupted), \
+             mock.patch.object(roll, "prepare_segment_audio_for_file_export", prepare):
+            with self.assertRaisesRegex(KeyboardInterrupt, "cancelled"):
+                self.execute(plan)
+        self.assertIsNone(local.audio)
+        self.assertIsNotNone(shared.audio)
+        self.assertEqual(set(plan.audio_decode_cache), {"global.wav"})
+        self.assertTrue(all(w.proc.poll() is not None and w.errors.closed for w in writers))
+        meta = json.loads((Path(plan.segment_mp4_run_dir) / "manifest.json").read_text())
+        self.assertEqual(meta["status"], "interrupted")
+
+    def test_fractional_fps_audio_rounding_and_odd_canvas(self):
+        writer = stream.FrameStream(self.case.output, "fractional", width=31, height=31, fps=30000 / 1001)
+        self.addCleanup(writer.abort)
+        for _ in range(37):
+            writer.append(f.torch.zeros(1, 31, 31, 3),
+                          {"waveform": f.torch.zeros(1, 1, 2000), "sample_rate": 48000})
+        self.assertEqual(writer.audio_samples, round(37 * 1001 / 30000 * 48000))
+        self.assertEqual(self.pixels(writer.finish()).shape, (37, 32, 32, 3))
+
+    def test_twenty_refined_segments_keep_only_predecessor_stage_pixels(self):
+        plan = self.build((100,) * 20, "legacy")
+        plan.refine["refine_only"] = False
+        refs, counts = [], []
+        def decode(*args, **kw):
+            frames = f.torch.zeros(5, 32, 32, 3)
+            refs.append(weakref.ref(frames))
+            return frames, None
+        def condition(**kw):
+            gc.collect()
+            counts.append(sum(ref() is not None for ref in refs))
+            return [], [], {"samples": f.torch.zeros(1, 2, 1, 2, 2)}, "refined"
+        self.execute(plan, run_cineStack_conditioning=condition, _decode_av_latent=decode)
+        gc.collect()
+        self.assertLessEqual(max(counts), 2, counts)
+        self.assertTrue(all(ref() is None for ref in refs))
+        root = Path(plan.segment_mp4_run_dir)
+        for stage in ("first_pass", "final"):
+            self.assertEqual(self.pixels(root / f"{stage}.mp4").shape[0], 100)
 
 
 if __name__ == "__main__":

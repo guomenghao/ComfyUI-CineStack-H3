@@ -2,6 +2,8 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
+当前修复版 **0.4.1**：修复延迟导出后的参考音频积累、仅二采裁剪记录预检和编码器异常清理。见 [本轮复测记录](docs/retest-0.4.1-2026-10-14.txt)。
+
 ## 滚动生成（0.4.0）
 
 在输出设置中勾选 **滚动生成（当前段＋上一段）**。前段完成下一段引导、尾帧裁剪和接缝处理后，才送入持续视频编码器并释放画面；不累计整条时间轴的 RGB。
@@ -101,7 +103,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.4.0` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.4.1` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
