@@ -102,6 +102,8 @@ from .segment_continuity import (
     is_continuity_active,
     match_export_opening_grade,
     prepare_export_seam,
+    export_frame_view_key,
+    owned_export_seam_pairs,
 )
 from .vram_cleanup import cleanup_segment_vram
 from .execution_mode import low_memory_enabled, rolling_enabled
@@ -1561,6 +1563,7 @@ def _execute_director_plan_core(
             phase="decode", phase_value=1, phase_max=1, **meta,
         )
 
+        _mem("export_cpu_before", seg.timeline_index + 1, {"decoded": decoded, "pre_export": pre_export})
         chunk = decoded
         if getattr(chunk, "device", None) is not None and chunk.device.type != "cpu":
             chunk = chunk.cpu()
@@ -1581,6 +1584,11 @@ def _execute_director_plan_core(
                 pre_chunk = pre_chunk.float()
         else:
             pre_chunk = chunk
+        _mem("export_cpu_after", seg.timeline_index + 1, {"decoded": decoded, "pre_export": pre_export, "exports": (chunk, pre_chunk)})
+        # Grade returns isolated buffers. Only these may be mutated later;
+        # cached images and ungraded/shared outputs retain functional semantics.
+        owned_export_ids = set()
+        _mem("opening_grade_before", seg.timeline_index + 1, {"decoded": decoded, "pre_export": pre_export, "exports": (chunk, pre_chunk)})
         if trim_frames > 0 and prev_idx >= 0 and is_continuity_active(plan, seg):
             prev_export = completed_outputs.get(prev_idx)
             if low_memory and hold_after_first:
@@ -1589,7 +1597,10 @@ def _execute_director_plan_core(
                     prev_export = first_tail
             if prev_export is not None and int(prev_export.shape[0]) >= 1:
                 same_pre = pre_chunk is chunk
+                ungraded_id = id(chunk)
                 chunk = match_export_opening_grade(chunk, prev_export)
+                if id(chunk) != ungraded_id:
+                    owned_export_ids.add(id(chunk))
                 if same_pre:
                     pre_chunk = chunk
                 elif pre_chunk is not None:
@@ -1599,12 +1610,22 @@ def _execute_director_plan_core(
                     prev_pre = completed_pre_refine.get(prev_idx)
                     if prev_pre is None or int(prev_pre.shape[0]) < 1:
                         prev_pre = prev_export
+                    ungraded_id = id(pre_chunk)
                     pre_chunk = match_export_opening_grade(pre_chunk, prev_pre)
+                    if id(pre_chunk) != ungraded_id:
+                        owned_export_ids.add(id(pre_chunk))
         if hold_after_first and pre_chunk is chunk and not low_memory:
             pre_chunk = chunk.clone()
+        _mem("opening_grade_after", seg.timeline_index + 1, {"decoded": decoded, "pre_export": pre_export, "exports": (chunk, pre_chunk)})
+        # Cropped views can keep the whole decoded storage alive. The outputs
+        # above now own what they need; release obsolete decode aliases before
+        # allocating face/seam/cache/export workspaces (also on the final shot).
+        decoded = pre_export = None
+        _mem("postprocess_release", seg.timeline_index + 1, {"exports": (chunk, pre_chunk)})
         decode_s = time.perf_counter() - t_decode
         pre_face_chunk = chunk
         if run_face_refine and not hold_after_first:
+            _mem("face_refine_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
             if clear_vram_before_face_refine:
                 cleanup_segment_vram(enabled=True, unload_models=True)
                 reports.append(
@@ -1678,21 +1699,29 @@ def _execute_director_plan_core(
             )
             if not run_refine:
                 pre_chunk = chunk
+            _mem("face_refine_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
+        _mem("seam_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
         if low_memory and continuity_active and prev_idx in resampled_this_run:
             # Run the original whole-concat seam treatment on this adjacent
             # pair before either clip is released. Never build a full timeline.
             stages = [(completed_outputs, segment_outputs, chunk),
                       (completed_pre_refine, segment_pre_refine, pre_chunk),
                       (completed_pre_face, segment_pre_face, pre_face_chunk)]
+            writable_pairs = owned_export_seam_pairs(
+                [(completed.get(prev_idx), current) for completed, _, current in stages],
+                owned_export_ids)
             pairs, corrected = {}, []
             for completed, output_list, current_frames in stages:
                 previous_frames = completed.get(prev_idx)
                 if previous_frames is None:
                     corrected.append(current_frames)
                     continue
-                key = (id(previous_frames), id(current_frames))
+                key = (export_frame_view_key(previous_frames), export_frame_view_key(current_frames))
                 if key not in pairs:
-                    pairs[key] = prepare_export_seam(previous_frames, current_frames)
+                    if key in writable_pairs:
+                        pairs[key] = prepare_export_seam(previous_frames, current_frames, inplace_body=True)
+                    else:
+                        pairs[key] = prepare_export_seam(previous_frames, current_frames)
                 previous_fixed, current_fixed = pairs[key]
                 completed[prev_idx] = previous_fixed
                 position = progress_pos.get(prev_idx)
@@ -1719,6 +1748,7 @@ def _execute_director_plan_core(
                                                 dest_suffix=f"p{previous_passes}")
             # Pair-processing temporaries must not retain old full-frame storage.
             del stages, pairs, corrected, previous_frames, previous_fixed, current_fixed, current_frames
+        _mem("seam_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
         handoff = {
             "trim_frames": int(trim_frames),
             "export_frames": int(chunk.shape[0]),
@@ -1737,6 +1767,7 @@ def _execute_director_plan_core(
             hold_after_first=hold_after_first,
         )
         t_cache = time.perf_counter()
+        _mem("segment_cache_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "samples": samples, "audio": audio_dict})
         if write_cache:
             save_segment_cache(
                 node_id,
@@ -1747,9 +1778,12 @@ def _execute_director_plan_core(
                 handoff=handoff,
                 audio=audio_dict if isinstance(audio_dict, dict) else None,
             )
+        _mem("segment_cache_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "samples": samples, "audio": audio_dict})
+        _mem("boundary_cache_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "audio": audio_dict})
         if write_cache:
             junctions.save_boundary(node_id, seg, plan, pre_chunk,
                                    audio_dict if execution_mode == "first_pass" else None, first_pass=True)
+        _mem("boundary_cache_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "audio": audio_dict})
         cache_s = time.perf_counter() - t_cache
         completed_outputs[seg.index] = chunk
         completed_pre_refine[seg.index] = pre_chunk
@@ -1757,6 +1791,7 @@ def _execute_director_plan_core(
         completed_refine_passes[seg.index] = pass_clips
         segment_export_lengths[seg.index] = int(chunk.shape[0])
 
+        _mem("segment_export_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "audio": audio_dict})
         #「分段导出」: flush mp4 as soon as this segment succeeds (crash-safe).
         # Confirmation hold has no final/second-pass clip yet: save only _pre.
         if hold_after_first:
@@ -1804,6 +1839,7 @@ def _execute_director_plan_core(
                             first_only=execution_mode == "first_pass", refined=run_refine,
                             face_refined=run_face_refine and not hold_after_first, refine_passes=n_refine)
 
+        _mem("segment_export_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk), "audio": audio_dict})
         if clear_vram_between_segments and progress_index < seg_total - 1:
             cleanup_segment_vram(enabled=True)
 

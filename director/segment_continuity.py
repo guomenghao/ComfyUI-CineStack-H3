@@ -626,6 +626,7 @@ def _additive_opening_luma(
     *,
     blend_frames: int = CONTINUITY_SEAM_ADD_LUMA_FRAMES,
     max_delta: float = CONTINUITY_SEAM_ADD_LUMA_MAX,
+    inplace: bool = False,
 ) -> torch.Tensor:
     """Add the same RGB delta so mean luma eases from guide[-1] → body[n].
 
@@ -669,7 +670,9 @@ def _additive_opening_luma(
     ):
         return body
 
-    out = body.clone()
+    # Only the owner of an isolated export buffer may opt into mutation.
+    # The arithmetic touches at most blend_frames, with no full-clip temporary.
+    out = body if inplace else body.clone()
     for i in range(n):
         t = float(i) / float(n)
         target = y_start * (1.0 - t) + y_end * t
@@ -1756,7 +1759,36 @@ def continuity_merged_frame_count(plan: DirectorPlan) -> int:
     return int(plan.total_frames)
 
 
-def prepare_export_seam(left, body):
+def export_frame_view_key(frames):
+    """Identify equal tensor views without reading pixels or retaining storage."""
+    if frames is None:
+        return None
+    return (str(frames.device), frames.untyped_storage().data_ptr(),
+            str(frames.dtype), frames.storage_offset(), tuple(frames.shape), tuple(frames.stride()))
+
+
+def owned_export_seam_pairs(frame_pairs, owned_ids):
+    """Permit mutation only for isolated export storage with one distinct use.
+
+    Tail trimming creates different tensor objects for identical views. Those
+    are the same operation, while different offsets/strides/guides are not.
+    A missing guide is still a consumer and must keep its original pixels.
+    """
+    uses, guides, owned = {}, set(), set()
+    for left, body in frame_pairs:
+        left_key, body_key = export_frame_view_key(left), export_frame_view_key(body)
+        key = (left_key, body_key)
+        storage = body_key[:2]
+        uses.setdefault(storage, set()).add(key)
+        if left_key is not None:
+            guides.add(left_key[:2])
+        if id(body) in owned_ids:
+            owned.add(key)
+    return {key for key in owned if key[0] is not None
+            and len(uses[key[1][:2]]) == 1 and key[1][:2] not in guides}
+
+
+def prepare_export_seam(left, body, *, inplace_body=False):
     """The existing concat seam corrections, usable on one adjacent pair."""
     left = _unfreeze_held_tail(left)
     if CONTINUITY_HOLD_POP_ON_TAIL:
@@ -1765,7 +1797,7 @@ def prepare_export_seam(left, body):
     if float(CONTINUITY_SPIKE_WEIGHT) > 0:
         body = _ease_opening_spikes(body)
     body = _soften_body0_toward_prev(body, left)
-    body = _additive_opening_luma(body, left)
+    body = _additive_opening_luma(body, left, inplace=inplace_body)
     return _micro_seam_bridge(left, body)
 
 

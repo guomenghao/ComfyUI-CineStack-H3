@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.4** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.5** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 后处理内存峰值修复（0.6.5）
+
+滚动／低内存生成时，色调匹配保留必要的一份独立导出副本；随后释放过期解码引用，开头 12 帧的亮度接缝修正直接复用该副本，避免再次复制整段画面。相同裁剪视图的重复分支只处理一次；不同引导、不同视图或借用的一采缓存仍保留隔离，避免串改画面。
+
+新增 CPU 转换、色调匹配、原始画面引用释放、修脸、接缝、缓存／边界保存和导出阶段诊断。旧工作流无需修改，独立 seed、仅二采、连接线约束及滚动导出规则不变。此修复针对已确认的临时副本峰值，不保证 64 GiB 环境承载任意模型／分辨率，也未将 CPU 回归视为真实 19 段 GPU 验证。见 [验证记录](docs/retest-0.6.5-2026-10-14.txt)。
 
 ## 阶段级内存诊断（0.6.4）
 
@@ -144,7 +150,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.4` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.5` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

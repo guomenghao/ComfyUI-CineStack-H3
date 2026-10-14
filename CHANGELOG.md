@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5 — 2026-10-14
+
+- Release obsolete decoded RGB aliases after opening grade, before seams, cache writes and export. Reuse owned export buffers for additive opening luma instead of cloning full clips again. Keep the initial grade isolation copy.
+- Deduplicate identical cropped views by storage, offset, shape, dtype and stride. Preserve isolation for distinct guides/views, missing-guide consumers, cached frames and buffers also used as guides. Preserve functional defaults for legacy callers.
+- Add postprocessing memory checkpoints and tests for pixel equivalence, 277-frame clone bounds, alias isolation, decoder lifetime and partial traces on seam failure. Preserve rolling export, independent seeds, strict refinement and continuity. No Registry publication.
+
 ## 0.6.4 — 2026-10-14
 
 - Enable read-only memory diagnostics by default for rolling generation. Write bounded console summaries and per-run JSONL observations across conditioning, sample/cache reuse, refinement passes, decode, encode, cleanup and merge. Keep partial traces on exceptions.

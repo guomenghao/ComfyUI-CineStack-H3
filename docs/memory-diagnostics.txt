@@ -1,4 +1,4 @@
-影栈 0.6.4：阶段级系统内存诊断
+影栈 0.6.5：阶段级系统内存诊断
 
 如何使用
 1. git pull --ff-only 后重启 ComfyUI 服务，再刷新浏览器。
@@ -21,6 +21,16 @@ first_cache_after：一采落盘检查点（仅低内存路径在此直接落盘
 first_decode_before/after：精修前的一采画面解码；未执行则无该事件。
 refine_before/after、refine_pass_N_before/after：精修与各轮采样检查点。
 decode_before/after：最终 AV 解码前后，后者尚未完成裁剪和接缝处理。
+0.6.5 新增（前后快照不保证捕获阶段内部所有瞬时峰值）：
+export_cpu_before/after：导出画面 CPU / float32 转换。
+opening_grade_before/after：开头色调匹配，after 仍统计待释放的原始解码画面。
+postprocess_release：清除 decoded/pre_export 临时引用后；画面仍被其他合法消费者引用时不会释放其存储。
+face_refine_before/after：仅实际执行修脸时出现。
+seam_before/after：前后段接缝处理；相同视图复用一份结果，独立导出画面无需再整段 clone。
+segment_cache_before/after：本段缓存保存边界（策略跳过写入时也有快照）。
+boundary_cache_before/after：有界首尾接点缓存保存边界（策略跳过时也有快照）。
+segment_export_before/after：单段导出或滚动输出登记；滚动实际编码仍看 encode_before/after。
+若最后为 seam_before 而无 seam_after，只能定位到该区间，不能仅据此宣称 OOM；需结合平台退出证据。
 segment_result / segment_returned：段函数返回前后；后者内部局部变量已离开作用域。
 encode_before/after：写入前段或最后一段的持续编码器；segment 指实际写入的段号，可能小于当前采样段。
 release_before/after：原有前段画面引用清理和段末清理前后；after 已删除外层临时画面变量。

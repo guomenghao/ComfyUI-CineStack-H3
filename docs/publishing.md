@@ -26,7 +26,7 @@ Publisher 已注册为 [`cinestack`](https://registry.comfy.org/zh/publishers/ci
 2. 在 Actions 中手动运行 **Publish to Comfy Registry**，输入与元数据一致的版本号。
 3. 检查 Registry 新条目的仓库、作者、版本、安装文件及节点加载结果。
 
-当前包 ID 为 `cinestack-h3`，待发布版本为 `0.6.4`（包含低内存落盘、导演台分段工作台及官方 H3 导入修复）。上架前确认 Registry ID 可用；正式创建后包 ID 不可随意变更。
+当前包 ID 为 `cinestack-h3`，待发布版本为 `0.6.5`（包含低内存落盘、导演台分段工作台及官方 H3 导入修复）。上架前确认 Registry ID 可用；正式创建后包 ID 不可随意变更。
 普通推送只运行 CI，不自动发布。发布 Action 会先运行完整 CPU/浏览器回归，再检查 Publisher ID、token 和版本；检查失败则停止。
 后续每个发布版本使用新版本号并同步 CHANGELOG，发布失败须排查后再判断版本是否可重试。
 

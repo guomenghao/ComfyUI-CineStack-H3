@@ -34,3 +34,5 @@ This is an independent derivative; it is not an AIMixer or ComfyUI official prod
 2026-10-14 (0.6.3): visible execution-stage buttons, actionable inline recovery and main-queue preflight; retain workflow intent and backend guards.
 
 2026-10-14 (0.6.4): add bounded read-only memory observations, deduplicated tensor-storage diagnostics and per-run JSONL records without changing generation policy.
+
+2026-10-14 (0.6.5): reduce opening seam full-frame copies, release decoder aliases earlier, preserve stage ownership and extend postprocessing memory diagnostics.

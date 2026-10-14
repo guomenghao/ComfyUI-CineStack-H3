@@ -1,0 +1,33 @@
+CineStack 0.6.5 — Opening postprocessing memory peak
+
+Changes
+- Retain the necessary initial grade isolation copy, but release obsolete decoder
+  aliases before face/seam/cache/export processing. Do not alter cached inputs.
+- Reuse isolated export storage for the additive 12-frame luma correction.
+- Deduplicate identical tensor views including cropped predecessor views. Reject
+  in-place use for distinct guides/views, missing-guide consumers and guide aliases.
+- Preserve legacy functional defaults and stage-specific first/final/face outputs.
+- Add CPU conversion, grade, release, optional face, seam, segment/boundary cache
+  and export-staging diagnostics. Actual rolling encoding retains its own hooks.
+
+Verified locally
+- 155 Python tests: 153 passed, 2 skipped for absent system FFmpeg (bundled
+  imageio-ffmpeg runs rolling video/export tests). Full run: 37.833 seconds.
+- 134 real Chromium checks: 42 seed/version/migration, 82 workbench, 10 assets.
+- Release metadata, example versions and CRLF-aware whitespace checks passed.
+- New tests compare real CPU seam pixels exactly with legacy output, ensure
+  tail pixels and predecessor inputs remain unchanged, record clone sizes,
+  protect shared branch/cache views and verify real executor decoder lifetimes.
+- A 19-segment connected CPU executor run with a 277-frame final shot checks
+  all 18 seams avoid full-frame cloning and encoded frames equal reported totals.
+- Checkpoint order and trace preservation on injected seam failure are verified.
+- Existing strict-refine, seed, partial/full rolling export, neighbour cache,
+  disconnected junction, old-workflow and continuity regressions remain included.
+
+Limits
+- Comfy/model/GPU sampling and VAE decoding use fixtures; real CPU tensor math,
+  cache operations, execution flow and FFmpeg export are exercised.
+- No real 64 GiB / RTX 5090 19-shot reproduction or GPU validation is claimed.
+- This fixes verified redundant copies, not every possible source of RAM growth.
+  Allocators may retain freed memory. Stage snapshots can miss transient peaks.
+- No Registry workflow or publication is invoked; git main upload only.
