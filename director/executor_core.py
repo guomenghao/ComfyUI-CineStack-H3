@@ -14,6 +14,7 @@ from ..lib.image_prep import assert_cineStack_canvas, fit_canvas, fit_video_long
 from ..lib.task_modes import SUPPORTED_TASK_KEYS
 from ..nodes.conditioning import run_cineStack_conditioning
 from .core_sampling import ShiftedModelCache, sample_single_stage
+from .memory_diagnostics import MemoryDiagnostics
 from .selflift.pack import (
     selflift_enabled,
     selflift_will_run,
@@ -647,6 +648,28 @@ def _execute_director_plan_core(
     segment_export_lengths: dict[int, int] = {}
     export_segments_mode = plan.export_mode == "segments" or low_memory
 
+    diagnostics = MemoryDiagnostics(plan, output_run_dir, rolling=rolling)
+    plan._active_memory_diagnostics = diagnostics
+    if diagnostics.enabled:
+        reports.append(f"阶段级内存诊断：{diagnostics.path}（仅观察；不主动释放或卸载模型）")
+        log.info("CineStack MEM: diagnostic file: %s", diagnostics.path)
+
+    def _mem(stage, segment=None, current=None):
+        if not diagnostics.enabled:
+            return
+        diagnostics.record(stage, segment, {
+            "frames": (completed_outputs, completed_pre_refine, completed_pre_face,
+                       completed_refine_passes, segment_outputs, segment_pre_refine, segment_pre_face),
+            "latents": (completed_av_latents, completed_first_pass_av, completed_low_carry),
+            "audio": (completed_audios, segment_audios),
+            "plan_inputs": plan,
+            "current_locals": current,
+        }, frame_slots=len(completed_outputs), latent_slots=len(completed_av_latents),
+           first_pass_slots=len(completed_first_pass_av), audio_slots=len(completed_audios),
+           shifted_model_records=len(shift_cache._items))
+
+    _mem("run_start")
+
     def _flush_rolling(index):
         if rolling_run is None or index not in rolling_run.pending:
             return
@@ -658,6 +681,7 @@ def _execute_director_plan_core(
         junctions.save_boundary(node_id, previous, plan, frames, completed_audios.get(index))
         junctions.save_boundary(node_id, previous, plan, completed_pre_refine.get(index),
                                 completed_audios.get(index) if execution_mode == "first_pass" else None, first_pass=True)
+        _mem("encode_before", previous.timeline_index + 1)
         try:
             rolling_run.flush(previous, frames, completed_pre_refine.get(index),
                 completed_pre_face.get(index) if export_pre_face_refine else None,
@@ -666,6 +690,7 @@ def _execute_director_plan_core(
             # Source/fallback audio can be materialized again during delayed
             # export, after the sampling-side finally already released it.
             _release_segment_file_ref_audios(plan, previous)
+        _mem("encode_after", previous.timeline_index + 1)
         reports.append(f"Segment {previous.timeline_index + 1}: rolling stream committed ({frames.shape[0]} frames)")
 
     def _run_one_segment(
@@ -888,6 +913,7 @@ def _execute_director_plan_core(
             raise ValueError("r2v/v2v/rv2v / reference conditioning requires audio_vae input.")
 
         # Always build via official MiniMaxH3ImageToVideo / ReferenceToVideo.
+        _mem("conditioning_before", seg.timeline_index + 1, {"inputs": (first_frame, last_frame, ref_images, ref_videos, ref_audios, ref_video_audios), "cache": pre_cache})
         t_cond = time.perf_counter()
         positive, negative, latent, task_hint = run_cineStack_conditioning(
             clip=clip,
@@ -907,6 +933,7 @@ def _execute_director_plan_core(
             ref_image_size=official_ref_image_size(resolve_ref_image_size(seg, plan)),
         )
         cond_s = time.perf_counter() - t_cond
+        _mem("conditioning_after", seg.timeline_index + 1, {"conditioning": (positive, negative, latent), "cache": pre_cache, "right_frame": right_frame})
 
         from .semantic_bridge import apply_semantic_bridge
 
@@ -1235,6 +1262,7 @@ def _execute_director_plan_core(
             except Exception as exc:
                 log.debug("Live TAE preview skipped: %s", exc)
 
+        _mem("sampling_before", seg.timeline_index + 1, {"conditioning": (positive, negative, latent), "cache": pre_cache, "right_frame": right_frame})
         t_sample = time.perf_counter()
         if skip_first_sample:
             samples = pre_cache["av_latent"]
@@ -1317,6 +1345,7 @@ def _execute_director_plan_core(
                                                "frame_index": right_frame_index}
             else:
                 samples.pop(junctions.LOCK_KEY, None)
+        _mem("first_pass_reused" if skip_first_sample else "first_pass_sampled", seg.timeline_index + 1, {"conditioning": (positive, negative, latent), "samples": samples, "cache": pre_cache})
         first_pass_samples = samples
         completed_first_pass_av[seg.index] = first_pass_samples
         if low_memory and not skip_first_sample:
@@ -1328,6 +1357,7 @@ def _execute_director_plan_core(
                              sample_len=sample_len, visible_frames=num_frames, target_len=target_len,
                              keep_tail=bool(getattr(plan, "continuity_keep_tail", True)))),
                          "sample_frames": int(sample_len), "official_mc_length": False})
+        _mem("first_cache_after", seg.timeline_index + 1, {"conditioning": (positive, negative, latent), "samples": samples})
         first_pass_gpu = None
         pre_export = None
         run_refine = will_refine and not hold_after_first
@@ -1343,10 +1373,12 @@ def _execute_director_plan_core(
                         progress_node_id, segment_index=progress_index, segment_total=seg_total,
                         phase="decode", phase_value=0, phase_max=1, **meta,
                     )
+                    _mem("first_decode_before", seg.timeline_index + 1, {"samples": samples})
                     first_pass_gpu, _ = _decode_av_latent(
                         samples, vae, audio_vae, decode_audio=False,
                     )
                     pre_export = first_pass_gpu.detach().cpu().float()
+                    _mem("first_decode_after", seg.timeline_index + 1, {"samples": samples, "pre_export": pre_export})
                 except Exception as exc:
                     if low_memory:
                         raise RuntimeError(f"低内存落盘：第 {ui_idx + 1} 段一采画面解码失败；已保存一采 latent：{exc}") from exc
@@ -1451,6 +1483,8 @@ def _execute_director_plan_core(
                 )
 
         if run_refine:
+            _mem("refine_before", seg.timeline_index + 1, {"samples": samples, "pre_export": pre_export,
+                 "upscale_frames": upscale_frames, "conditioning": (positive, negative, latent)})
             samples, refine_note = apply_segment_refine(
                 plan,
                 seg,
@@ -1492,15 +1526,18 @@ def _execute_director_plan_core(
             del first_pass_gpu
             first_pass_gpu = None
         sample_s = time.perf_counter() - t_sample
+        _mem("refine_after" if run_refine else "sampling_after", seg.timeline_index + 1, {"conditioning": (positive, negative, latent), "samples": samples, "pre_export": pre_export})
 
         report_director_progress(
             progress_node_id, segment_index=progress_index, segment_total=seg_total,
             phase="decode", phase_value=0, phase_max=1, **meta,
         )
+        _mem("decode_before", seg.timeline_index + 1, {"samples": samples, "pre_export": pre_export, "conditioning": (positive, negative, latent)})
         t_decode = time.perf_counter()
         decoded, audio_dict = _decode_av_latent(
             samples, vae, audio_vae, decode_audio=decode_audio,
         )
+        _mem("decode_after", seg.timeline_index + 1, {"decoded": decoded, "audio": audio_dict, "samples": samples, "pre_export": pre_export, "conditioning": (positive, negative, latent)})
         # Default: crop free region back to UI length. 「保完整」keeps sample-trim
         # (the 17k+5 remainder). Next pin uses trim+export.
         export_len = continuity_export_len(
@@ -1785,6 +1822,7 @@ def _execute_director_plan_core(
             "CineStack H3 Director segment %d/%d done (%d frames, task=%s)",
             ui_idx + 1, timeline_seg_total, target_len, seg.task_key,
         )
+        _mem("segment_result", seg.timeline_index + 1, {"decoded": decoded, "samples": samples, "pre_export": pre_export, "conditioning": (positive, negative, latent)})
         return chunk, audio_dict, pre_chunk, pre_face_chunk
 
     for seg in all_segments:
@@ -1822,12 +1860,15 @@ def _execute_director_plan_core(
         if seg.index in run_indices:
             if clear_vram_between_segments and segment_outputs:
                 cleanup_segment_vram(enabled=True)
+            _mem("segment_start", seg.timeline_index + 1)
             try:
                 chunk, audio_dict, pre_chunk, pre_face_chunk = _run_one_segment(
                     seg, progress_index=progress_pos[seg.index]
                 )
             finally:
                 _release_segment_file_ref_audios(plan, seg)
+            _mem("segment_returned", seg.timeline_index + 1, {"chunk": chunk, "pre": pre_chunk,
+                 "face_pre": pre_face_chunk, "audio": audio_dict})
             if rolling_run:
                 # The successor has now used and corrected its predecessor.
                 for pending in tuple(rolling_run.pending):
@@ -1841,6 +1882,7 @@ def _execute_director_plan_core(
             segment_audios.append({} if low_memory else (audio_dict or {}))
             segment_export_lengths[seg.index] = int(chunk.shape[0])
             resampled_this_run.add(seg.index)
+            _mem("release_before", seg.timeline_index + 1)
             if export_segments_mode and seg.index > 0:
                 # Next pin + phase-trim already happened inside _run_one_segment.
                 _release_segment_pixels(
@@ -1864,15 +1906,17 @@ def _execute_director_plan_core(
                 else:
                     cleanup_segment_vram(enabled=True, unload_models=False)
                 rss = ram_snapshot()
-                log.info("CineStack RAM: segment %d saved; previous pixels released; RSS=%s MiB",
+                log.info("CineStack RAM: segment %d finished; previous frame references removed; process RSS=%s MiB",
                          seg.timeline_index + 1, "n/a" if rss is None else f"{rss / 1024**2:.1f}")
                 # Loop locals otherwise keep the last full clip alive after maps are pruned.
                 del chunk, pre_chunk, pre_face_chunk, audio_dict
+                _mem("release_after", seg.timeline_index + 1)
             elif plan.export_mode == "all":
                 output_chunks.append(chunk)
                 output_pre_chunks.append(pre_chunk)
                 output_pre_face_chunks.append(pre_face_chunk)
                 output_segments.append(seg)
+            _mem("segment_end", seg.timeline_index + 1)
             continue
 
         if low_memory or plan.export_mode != "all":
@@ -1989,7 +2033,9 @@ def _execute_director_plan_core(
             working_set.clear()
         segment_audios.clear()
         gc.collect()
+        _mem("merge_before")
         reports.extend((rolling_run or disk_run).finish())
+        _mem("merge_after")
         report_director_finish(progress_node_id, seg_total)
         shift_cache.clear()
         poster = torch.full((1, 2, 2, 3), 0.5)
@@ -2129,11 +2175,18 @@ def execute_director_plan_core(plan, **kwargs):
     try:
         return _execute_director_plan_core(plan, **kwargs)
     except BaseException:
+        diagnostics = getattr(plan, "_active_memory_diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.record("execution_failed")
         active = getattr(plan, "_active_rolling_run", None)
         if active is not None:
             active.abort()
             log.error("滚动生成已停止；已保存的一采缓存和编码片段保留在 %s", active.root)
         raise
     finally:
+        diagnostics = getattr(plan, "_active_memory_diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.record("execution_exit")
+            del plan._active_memory_diagnostics
         if hasattr(plan, "_active_rolling_run"):
             del plan._active_rolling_run

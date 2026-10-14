@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 — 2026-10-14
+
+- Enable read-only memory diagnostics by default for rolling generation. Write bounded console summaries and per-run JSONL observations across conditioning, sample/cache reuse, refinement passes, decode, encode, cleanup and merge. Keep partial traces on exceptions.
+- Count supplied backing tensor storages once across aliases and slices; report category totals, largest allocations, incomplete traversal, process RSS/anonymous/file/swap, available glibc counters, cgroup usage and model record counts. Do not retain tensors, read tensor contents, synchronize CUDA, force allocator trimming or change model unloading.
+- Preserve old workflow defaults, seed/cache identities, strict refinement and rolling continuity. Clarify the old release message as reference removal, not proof of returned RAM. Add diagnostic unit/executor regressions. No Registry publication.
+
 ## 0.6.3 — 2026-10-14
 
 - Replace the execution dropdown with visible, keyboard-accessible First pass / Second pass / Follow graph buttons and a run summary. Preserve legacy timeline values and wired Refine settings.

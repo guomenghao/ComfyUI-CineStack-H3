@@ -6,6 +6,10 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Stage memory diagnostics (0.6.4)
+
+Rolling generation now enables read-only stage observations by default. Search the console for `CineStack MEM:` and collect `memory_diagnostics.jsonl` beside this run's output. The trace covers conditioning, sampling/cache reuse, refinement passes, decode, stream encoding, reference cleanup and merge. It reports process memory, deduplicated visible tensor storages, available glibc allocator counters, cgroup memory and model record counts. It never trims allocators, unloads models or changes sampling. It diagnoses growth; it does not claim to fix the real-model RAM issue. Set `CINESTACK_MEMORY_DIAGNOSTICS=0` before starting ComfyUI to disable. See [scope and interpretation](docs/memory-diagnostics.txt).
+
 ## Visible execution controls (0.6.3)
 
 The segment workbench now offers **First pass only / Second pass only / Follow graph** buttons with a visible selected state, next to **Check and run**, plus the selected segment count and output scope. Existing workflows keep their execution intent.
@@ -79,7 +83,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.3 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.4 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

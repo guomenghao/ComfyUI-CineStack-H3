@@ -1,0 +1,31 @@
+CineStack 0.6.4 — Stage-level memory diagnostics
+
+Changes
+- Read-only observations enabled by default for rolling generation; env opt-out.
+- Console summaries and per-run memory_diagnostics.jsonl, including partial/error traces.
+- Process RSS/anonymous/file/swap, available glibc allocator counters, cgroup usage,
+  CUDA allocator counters without initialization/synchronization, model record counts.
+- Bounded explicit tensor traversal with backing-storage deduplication, slices,
+  Comfy AV wrappers, cycles, category sizes, largest storages and truncation markers.
+- Hooks around conditioning, sampling/cache reuse, refine passes, decoding, encoding,
+  old-reference cleanup and final merge. Sampling and cleanup policies unchanged.
+
+Verification
+- Release identity and example version validation passed.
+- Diff whitespace checked with cr-at-eol for existing CRLF source files.
+- Python full suite: 148 tests; local environment skips two system-FFmpeg audio tests.
+- Browser: 42 seed/version/migration + 82 workbench + 10 versioned-assets checks passed.
+- Diagnostic cases cover shared storage, sliced views, distinct clones, AV wrappers,
+  bounded traversal, weak-reference lifetime, exact phase deltas, no prompt contents,
+  disabled behavior, unavailable probes, write errors, execution-stage ordering,
+  bounded rolling frames, seed/cache identity, strict refinement reuse, real N-pass
+  refine-loop observation without enabling intermediate export, and failure traces.
+
+Limits
+- Host/model GPU inference is simulated in CPU executor tests.
+- Existing continuity/rolling/partial-export regressions remain included.
+- A partial storage inventory is not the whole Python/native heap or resident RSS.
+- Runtime peaks between observation points can be missed; external/native allocators
+  may be outside mallinfo2 coverage. No malloc_trim or added model unloading.
+- GPU reproduction and root-cause confirmation require the user's updated server run.
+- No Comfy Registry publication invoked.

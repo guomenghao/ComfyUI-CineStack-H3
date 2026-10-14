@@ -1,0 +1,56 @@
+影栈 0.6.4：阶段级系统内存诊断
+
+如何使用
+1. git pull --ff-only 后重启 ComfyUI 服务，再刷新浏览器。
+2. 保留原 seed、提示词、连接线及运行范围；开启滚动生成后诊断默认生效。
+3. 控制台打印 CineStack MEM: diagnostic file: <本轮输出目录>/memory_diagnostics.jsonl。
+   通常位于 output/minimax_seg_export/<时间目录>/，以日志实际路径为准。
+4. 将 memory_diagnostics.jsonl 和包含采样/异常的控制台日志一并提供。
+   文件按阶段追加，每行关闭；中途 Python 异常会记录 execution_failed，强制 kill/OOM kill 可能没有最后一行。
+5. 排除诊断开销时，可在启动服务前设置 CINESTACK_MEMORY_DIAGNOSTICS=0。
+   也支持后端 output.memoryDiagnostics=false；非滚动默认关闭，可用 true 开启。
+   没有增加新 UI 控件，不要求旧工作流迁移或清除一采缓存。
+
+阶段
+run_start：执行器工作集已建立。上游加载器及计划构建发生在此之前。
+segment_start：开始当前选中段，旧 continuity 工作集已按原逻辑裁剪。
+conditioning_before/after：参考输入准备之后，官方条件编码前后。
+sampling_before：段间引导与约束已构建，开始一采或复用缓存。
+first_pass_sampled / first_pass_reused：区分新采样与严格缓存复用。
+first_cache_after：一采落盘检查点（仅低内存路径在此直接落盘）。
+first_decode_before/after：精修前的一采画面解码；未执行则无该事件。
+refine_before/after、refine_pass_N_before/after：精修与各轮采样检查点。
+decode_before/after：最终 AV 解码前后，后者尚未完成裁剪和接缝处理。
+segment_result / segment_returned：段函数返回前后；后者内部局部变量已离开作用域。
+encode_before/after：写入前段或最后一段的持续编码器；segment 指实际写入的段号，可能小于当前采样段。
+release_before/after：原有前段画面引用清理和段末清理前后；after 已删除外层临时画面变量。
+segment_end：本段结束，仍保留下一段需要的当前段。没有声称整个模型进程只占两段内存。
+merge_before/after：最终清理已完成，合并输出前后。
+execution_failed / execution_exit：异常/退出快照；无可见张量对象清单，tensors 为 null，不能当成零占用。
+
+记录与统计范围
+- process：Linux /proc/self/status，字节；非 Linux 尝试 psutil RSS，其余缺项不是零。
+- delta_previous_rss：相邻记录差值；delta_segment_rss：相对本段 segment_start；delta_run_rss：相对 run_start。
+  阶段内短暂峰值无法由阶段边界快照保证捕获。
+- tensors：只遍历显式提供的 torch 张量、容器、计划数据类和 Comfy AV NestedTensor。
+  按设备、底层 storage 指针和字节数去重；切片即使很小，也计入它保持存活的完整 backing storage。
+  不复制张量、不读取画面、不遍历 gc 全堆；单快照最多遍历 20000 个对象，超限标 truncated。
+  frames / latents / audio / plan_inputs / current_locals 按出现顺序归属；同一存储不会在多组重复相加。
+  精修内部快照只提供 refine_work/refine_conditioning，范围小于执行器快照，不可直接比较不同范围的 tracked_cpu。
+  largest 为前 8 个存储的大小/形状/类型，不包含内容、提示词、seed 或存储指针。
+  不包含所有模型权重、第三方库、NumPy 数组及宿主内部缓存；虚拟存储字节数不等于驻留 RSS。
+- allocator：可用时读取 glibc mallinfo2；uordblks=分配块，fordblks=分配器空闲块，hblkhd=mmap 块。
+  它不是 RSS，也不是全部第三方分配器的统计，空闲块不保证能全部归还系统。
+  非 glibc、缺少 mallinfo2 或 LD_PRELOAD 非空时记 null；不调用 malloc_trim，不改分配器策略。
+- runtime：Comfy current_loaded_models 记录数（不等于权重副本数）；仅 CUDA 已初始化时读取当前设备 allocated/reserved，无 synchronize。
+- counters：导演台画面/latent/audio 工作集条目数及 shifted-model 缓存条目数。
+- cgroup：可访问的 cgroup v2 current/max/swap，包含其他进程；不等于本进程 RSS。父级限制可能更严格。
+- diagnostic_ms：采集/统计开销，不含控制台及文件写入；每阶段一行，仍有少量 CPU/磁盘成本。
+- probe_errors / unsupported_tensors / truncated：不完整观测证据。诊断写入失败只告警，不中止生成。
+
+如何定位
+A. segment_end 的 frames/latents/audio 存储或条目数随段数持续上升：优先查对应引用保留路径。
+B. 存储量稳定、Anon 和 glibc fordblks 上升：存在分配器空闲空间保留的证据；不能据此断定全部增长来源。
+C. 存储量稳定、Anon/分配块增长：继续查模型管理、宿主/第三方缓存及未覆盖对象，结合上升集中在哪个阶段。
+D. 模型管理记录或 shifted-model 记录持续增长：检查模型生命周期，但不能仅凭记录数断言复制了整套权重。
+本版用于取证，不将模拟回归通过视为真实 19 段 GPU 内存问题已经修复。

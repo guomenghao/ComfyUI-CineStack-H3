@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.3** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.4** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 阶段级内存诊断（0.6.4）
+
+滚动生成默认启用只读诊断，无需修改旧工作流。控制台搜索 `CineStack MEM:`，每次运行的输出目录同步保存 `memory_diagnostics.jsonl`，中途异常也保留已有记录。更新并重启服务后复跑，将该文件与生成日志一起提供即可。
+
+诊断记录条件编码、一采/缓存复用、精修轮次、VAE 解码、持续编码、引用清理及合并阶段的内存变化；统计导演台可见的底层张量存储并去重，补充 Linux 匿名/文件内存、glibc 分配器、容器内存及模型管理记录数量。不会主动卸载模型、调用 malloc_trim 或改变采样。统计范围和日志读法见 [内存诊断说明](docs/memory-diagnostics.txt)。这次增加定位能力，不宣称已修复真实模型的 RAM 增长。
 
 ## 执行按钮与运行前提示（0.6.3）
 
@@ -138,7 +144,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.3` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.4` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

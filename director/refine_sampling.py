@@ -1123,6 +1123,10 @@ def apply_segment_refine(
             )
             if on_phase:
                 on_phase("refine", (i + 0.5) / n_passes)
+            diagnostics = getattr(plan, "_active_memory_diagnostics", None)
+            if diagnostics is not None:
+                diagnostics.record(f"refine_pass_{i + 1}_before", seg.timeline_index + 1,
+                                   {"refine_work": work, "refine_conditioning": (refine_positive, negative)})
             work = sample_single_stage(
                 model=refine_model,
                 positive=refine_positive,
@@ -1148,6 +1152,9 @@ def apply_segment_refine(
                 tile_overlap=int(pack.get("tile_overlap") or 128),
                 shift_cache=shift_cache,
             )
+            if diagnostics is not None:
+                diagnostics.record(f"refine_pass_{i + 1}_after", seg.timeline_index + 1,
+                                   {"refine_work": work, "refine_conditioning": (refine_positive, negative)})
             last_ok = work
             if on_pass is not None:
                 try:
