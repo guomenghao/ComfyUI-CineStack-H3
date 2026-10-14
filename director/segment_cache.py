@@ -654,6 +654,8 @@ def save_segment_cache(
         elif replace_audio:
             # Fresh sample with no waveform — drop stale audio from an older run.
             _safe_unlink(audio_path)
+        from .junctions import save_boundary
+        save_boundary(node_id, seg, plan, tensor, audio)
         log.debug(
             "Cached segment %d for node %s (%d frames%s%s)",
             idx + 1,
@@ -1246,7 +1248,8 @@ def first_pass_cache_problem(node_id, seg, plan) -> str | None:
     if _plan_uses_external_groups(plan) and not has_external_marker(stored):
         diff.append("external_group")
     if not diff:
-        return None
+        from .junctions import constraint_problem
+        return constraint_problem(node_id, seg, plan)
     labels = {"seed": "一采 seed", "prompt": "提示词", "negative": "负向提示词",
               "width": "宽度", "height": "高度", "start": "起点帧", "end": "终点帧",
               "refs": "参考图片", "ref_audios": "参考音频", "ref_videos": "参考视频",
@@ -1275,6 +1278,12 @@ def load_first_pass_cache(
         return None
     root = _cache_root(node_id)
     if root is None:
+        return None
+    from .junctions import constraint_problem
+    problem = constraint_problem(node_id, seg, plan)
+    if problem:
+        if raise_on_error:
+            raise ValueError(problem)
         return None
     idx = seg.index
     meta_path = root / f"seg_{idx:04d}.pre.meta.json"
@@ -1340,6 +1349,15 @@ def load_first_pass_cache(
                 if raise_on_error:
                     raise ValueError(f"一采 handoff 元数据无法读取：{exc}") from exc
                 handoff = {}
+        if handoff.get("junction_right_locked"):
+            from .junctions import LOCK_KEY
+            lock = payload.get(LOCK_KEY)
+            frame = lock.get("frame") if isinstance(lock, dict) else None
+            at = lock.get("frame_index") if isinstance(lock, dict) else None
+            if (not torch.is_tensor(frame) or frame.ndim != 4 or len(frame) != 1
+                    or not torch.isfinite(frame).all() or type(at) is not int or at < 0
+                    or at >= int(handoff.get("sample_frames") or 0)):
+                raise ValueError("一采右接点快照缺失或损坏，不能执行仅二采")
         low_carry = None
         if low_path.is_file():
             try:
@@ -1751,6 +1769,11 @@ def _inspect_external_group_cache(
             matches = bool(cache_exists and not diff)
             status = "valid" if matches else ("missing" if not cache_exists else "mismatch")
 
+        if cache_exists and idx < len(plan.segments):
+            from .junctions import constraint_problem
+            if constraint_problem(node_id, plan.segments[idx], plan):
+                diff.append("junction_links")
+                matches, status = False, "mismatch"
         all_diffs.update(diff)
         rows.append(
             {
@@ -1888,6 +1911,11 @@ def inspect_first_pass_cache(
         fp_match, fp_diff = _cmp_inspect_fingerprints(
             stored, expected, drop_keys=drop_first,
         ) if isinstance(stored, dict) else (False, ["<invalid-meta>"] if meta_exists else ["<missing-cache>"])
+        from .junctions import constraint_problem
+        junction_problem = constraint_problem(node_id, seg, plan) if cache_exists else None
+        if junction_problem:
+            fp_match = False
+            fp_diff.append("junction_links")
         matches = bool(cache_exists and fp_match)
         # A row stamped with an external-group witness was written by a group
         # run, while this request has no group input at all (link removed, or a

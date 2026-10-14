@@ -150,7 +150,8 @@ class RollingTests(unittest.TestCase):
         def pin(positive, latent, **kw):
             pins.append(int(kw["context_frames"].shape[0]))
             return positive, 22, 1
-        with mock.patch.object(f.core, "apply_motion_context", pin), \
+        with mock.patch.object(f.core.junctions, "apply_end_lock", lambda positive, *a, **kw: positive), \
+             mock.patch.object(f.core, "apply_motion_context", pin), \
              mock.patch.object(f.core, "select_continuity_pin_latent", lambda current, first, final: first if first is not None else final), \
              mock.patch.object(f.core, "describe_pin_window", lambda *a, **kw: "pin test"):
             result = self.execute(plan, run_cineStack_conditioning=condition, _decode_av_latent=decode)
@@ -168,13 +169,13 @@ class RollingTests(unittest.TestCase):
         meta = json.loads((Path(plan.segment_mp4_run_dir) / "manifest.json").read_text())
         self.assertEqual([e["first"]["frames"] for e in meta["segments"]], [38, 50, 51])
 
-    def test_partial_run_reconstructs_only_predecessor_from_av(self):
+    def test_partial_run_reads_bounded_predecessor_window(self):
         self.continuity_run(self.continuity_plan())
         plan = self.continuity_plan()
         plan.run_indices = frozenset({1})
         result, pins = self.continuity_run(plan)
         self.assertEqual(len(result[4]), 1)
-        self.assertEqual(pins, [38])
+        self.assertEqual(pins, [22])
         meta = json.loads((Path(plan.segment_mp4_run_dir) / "manifest.json").read_text())
         self.assertEqual([e["segment"] for e in meta["segments"]], [2])
 

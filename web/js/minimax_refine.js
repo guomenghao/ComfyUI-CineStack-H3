@@ -429,6 +429,7 @@ const CACHE_DIFF_LABELS = {
     external_prompt: "外接组提示词",
     external_length: "外接组时长",
     external_shift: "外接组时间轴推移",
+    junction_links: "左右连接线状态",
     external_media: "外接组参考素材",
     external_other: "外接组其他参数",
     external_groups_off: "外接组（缓存写入后接线已断开）",

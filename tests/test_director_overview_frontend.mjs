@@ -144,6 +144,16 @@ try {
   check((await page.locator('.cs-source').first().innerText()).includes('本段固定 · 0'),'zero is a fixed seed');
   await page.locator('.cs-mode select').selectOption('legacy');
   check(await page.evaluate(()=>JSON.parse(editor.timelineWidget.value).executionMode)==='legacy','legacy behavior selectable and serialized');
+  const jointState = await page.evaluate(() => {
+    const before = editor.timeline.segments.map(s => s.first_pass_seed);
+    editor.toggleContinuityJoint(2);
+    const off = JSON.parse(editor.timelineWidget.value).segments[2].continuityFromPrev;
+    editor.toggleContinuityJoint(2);
+    const on = JSON.parse(editor.timelineWidget.value).segments[2].continuityFromPrev;
+    return {off, on, sameSeeds: JSON.stringify(before) === JSON.stringify(editor.timeline.segments.map(s => s.first_pass_seed))};
+  });
+  check(jointState.off === false && jointState.on === true, 'junction toggles persist on the right segment without changing the legacy schema');
+  check(jointState.sameSeeds, 'junction editing preserves all independent seeds');
   const lowMemory=page.locator('[data-r="out-low-memory"]');
   check(!(await lowMemory.isChecked()),'old workflow defaults to normal memory behavior');
   await lowMemory.check();

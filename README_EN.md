@@ -6,7 +6,15 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
-## Rolling export (0.5.0)
+## Connected junctions (0.6.0)
+
+With Segment continuity on, rebuilding only clip 4 uses clip 3's exported tail when 3–4 is connected, and clip 5's exported first frame when 4–5 is connected and clip 5 is unselected. Disconnect either edge to remove that constraint. Links override manual start/end stills. Selected islands generate forwards internally; only outside boundaries read unselected neighbours. Missing boundary caches stop with segment/side diagnostics before sampling.
+
+Small exported boundary sidecars hold at most 56 tail frames plus one head frame; reads normally use 22 + 1 frames. Legacy RGB is mmap/range decoded; indexed rolling videos are streamed by frame range. No whole unselected neighbour AV decode. AV-only legacy caches without usable pixels/video need restored output/index or an explicitly requested neighbour rebuild. Strict second pass uses the first-pass constraint snapshot, not edited neighbour results. Changing links invalidates new first-pass snapshots; legacy first-pass caches remain readable without retroactively adding a right constraint.
+
+Right constraints are visual stills, not reverse audio/motion conditioning. GPU, appearance and audio seam acceptance remain pending. Workflow node IDs, seeds, export scopes and manual-only Registry publishing remain unchanged. See [details](docs/bidirectional-junctions.txt).
+
+## Rolling export (since 0.5.0)
 
 Enable **Rolling generation**, then choose the existing export scope:
 
@@ -55,7 +63,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.5.0 includes rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.0 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

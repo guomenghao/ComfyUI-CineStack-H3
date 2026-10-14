@@ -9239,7 +9239,7 @@ class CineStackH3DirectorEditor {
             ctx.lineWidth = on ? 1.5 : 1.15;
             ctx.stroke();
             this._drawContinuityLinkArrow(ctx, g.x, g.y + g.h / 2, accent);
-            const label = `S${joint.a}→S${joint.b}`;
+            const label = `S${joint.a}${on ? "↔" : "×"}S${joint.b}`;
             ctx.font = "800 8px sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";

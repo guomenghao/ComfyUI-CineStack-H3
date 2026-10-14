@@ -24,3 +24,5 @@ This is an independent derivative; it is not an AIMixer or ComfyUI official prod
 2026-10-14 (0.4.1): fix delayed-export reference PCM retention, strict handoff validation and encoder cleanup; extend rolling regression coverage.
 
 2026-10-14 (0.5.0): add durable rolling video-range records, selected-segment replacement with full disk composition, explicit old-manifest import and export-scope UI/tests.
+
+2026-10-14 (0.6.0): implement bidirectional connected-junction conditioning, bounded boundary caches, frozen refinement constraints, compatibility checks and regression coverage.

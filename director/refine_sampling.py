@@ -558,6 +558,8 @@ def _refresh_refine_endpoints(
     first_pass_images: torch.Tensor | None,
     tw: int,
     th: int,
+    connected_head: bool = False,
+    connected_tail: bool = False,
 ):
     """Re-encode official first/last stills at the refine canvas.
 
@@ -568,6 +570,10 @@ def _refresh_refine_endpoints(
     lanczos-scaled and re-encoded to keep the ending sharp after 3D upscale.
     """
     first_img, last_img = _lock_images_for_refine(seg, first_pass_images)
+    if connected_head:
+        first_img = None
+    if connected_tail:
+        last_img = None
     if first_img is None and last_img is None:
         return refine_positive, work, ""
     first_lat = _encode_lock_frame(vae, first_img, tw, th) if first_img is not None else None
@@ -883,6 +889,9 @@ def apply_segment_refine(
     prev_end_frame: int | None = None,
     prev_tail: torch.Tensor | None = None,
     shift_cache=None,
+    right_frame=None,
+    right_frame_index=None,
+    reuse_first_pass=False,
 ) -> tuple[dict, str]:
     """Run optional refine/upscale; strict second-pass failures propagate.
 
@@ -1021,6 +1030,8 @@ def apply_segment_refine(
                         first_pass_images=first_pass_images,
                         tw=tw,
                         th=th,
+                        connected_head=pin_frames > 0,
+                        connected_tail=right_frame is not None,
                     )
                     if ep_note:
                         note_parts.append(ep_note)
@@ -1087,6 +1098,16 @@ def apply_segment_refine(
                 "Unwire refine_model so the first-pass UNET (Turbo+Sage) is reused, "
                 "or use a matching second-pass UNET."
             )
+        if reuse_first_pass and guide_pin > 0 and not refine_needs_canvas(pack):
+            # Rebuild only from this confirmed first-pass prefix. Never pull a
+            # newly edited neighbour into strict second-pass conditioning.
+            refine_positive, _, work = _repin_after_upscale(
+                refine_positive, work, vae=vae, trim_frames=guide_pin, task_key=task_key)
+        if right_frame is not None:
+            from .junctions import apply_end_lock
+            refine_positive = apply_end_lock(refine_positive, work, right_frame, vae,
+                                             frame_index=right_frame_index)
+            note_parts.append("frozen right junction")
         # Pass 1 samples after optional upscale; later passes are same-canvas refine only.
         for i in range(n_passes):
             refine_seed = refine_seed_for(pack, seed, pass_index=i)
@@ -1146,9 +1167,9 @@ def apply_segment_refine(
         return work, "refine " + ", ".join(note_parts)
     except Exception as exc:
         from .execution_mode import low_memory_enabled
-        if refine_only_enabled(plan) or low_memory_enabled(plan):
+        if refine_only_enabled(plan) or low_memory_enabled(plan) or right_frame is not None:
             index = int(getattr(seg, "timeline_index", getattr(seg, "index", 0))) + 1
-            label = "仅二采" if refine_only_enabled(plan) else "低内存落盘"
+            label = "仅二采" if refine_only_enabled(plan) else ("接点约束" if right_frame is not None else "低内存落盘")
             raise RuntimeError(
                 f"{label}已停止：第 {index} 段二采失败：{exc}；未回退为一采结果，未重跑一采。"
             ) from exc

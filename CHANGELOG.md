@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — 2026-10-14
+
+- Interpret existing timeline links as junction constraints: previous exported tail and unselected next exported head for partial first-pass rebuilds; selected islands remain sequential. Disconnected edges skip both conditioning and rolling seam processing.
+- Preflight missing neighbour boundaries before cache pruning/sampling. Add bounded exported head/tail sidecars; mmap legacy RGB or stream exact indexed video ranges. Never hydrate whole unselected neighbour AV/pixels for junctions.
+- Freeze right endpoint pixels in first-pass AV and both link states in handoff metadata. Strict refinement reuses its own confirmed prefix/right lock, re-encodes the right lock after upscale, and rejects changed links or corrupt snapshots without first-pass fallback. Preserve legacy workflows and legacy first-pass cache readability.
+- Connected edges take precedence over manual stills; retain manual endpoints only on unconnected sides during upscale. Update Chinese/English tooltips and cache diagnostics. No Comfy Registry publication.
+
 ## 0.5.0 — 2026-10-14
 
 - Honor All export + Rolling as full-timeline disk composition: generate only selected segments and reuse saved video ranges for all unchecked segments. Segment export + Rolling still delivers only selected segments.

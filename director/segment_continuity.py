@@ -361,7 +361,8 @@ def is_continuity_active(plan: DirectorPlan, seg: SegmentPlan) -> bool:
     return (
         plan.continuity_enabled
         and plan.segment_count >= 2
-        and seg.index > 0
+        and 0 < seg.index < len(plan.segments)
+        and abs(plan.segments[seg.index - 1].end_frame - seg.start_frame) <= 2
         and seg.task_key in CONTINUITY_TASK_KEYS
         and bool(getattr(seg, "continuity_from_prev", True))
     )
@@ -1778,13 +1779,16 @@ def concat_continuous_chunks(
     Generation settling burn-in handles flash/pulse. Concat RGB morphs are OFF
     (00035: body0/hold→pop caused 拖影 and stutter pulses).
     """
-    del segments
     if not chunks:
         raise ValueError("concat_continuous_chunks: no chunks")
     if not getattr(plan, "continuity_enabled", False) or len(chunks) < 2:
         return cat_frames_variable_size(chunks)
     fixed: list[torch.Tensor] = [chunks[0]]
     for i in range(1, len(chunks)):
+        if (i >= len(segments) or segments[i].index != segments[i - 1].index + 1
+                or not is_continuity_active(plan, segments[i])):
+            fixed.append(chunks[i])
+            continue
         left, body = prepare_export_seam(fixed[-1], chunks[i])
         fixed[-1] = left
         fixed.append(body)

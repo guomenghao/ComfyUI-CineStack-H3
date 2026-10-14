@@ -101,10 +101,10 @@ from .segment_continuity import (
     is_continuity_active,
     match_export_opening_grade,
     prepare_export_seam,
-    resolve_prev_segment_output,
 )
 from .vram_cleanup import cleanup_segment_vram
-from .execution_mode import low_memory_enabled, rolling_enabled, rolling_full_export
+from .execution_mode import low_memory_enabled, rolling_enabled
+from . import junctions
 from .rolling import RollingRun
 from .rolling_store import RollingStore
 from .low_memory import LowMemoryRun, validate_low_memory, ram_snapshot
@@ -489,6 +489,8 @@ def _execute_director_plan_core(
     if low_memory:
         validate_low_memory(plan, node_id)
     rolling_store = RollingStore(plan, node_id) if rolling else None
+    junction_entries = rolling_store.entries if rolling_store else None
+    junctions.preflight(node_id, plan, entries=junction_entries)
 
     # Drop caches for deleted/shortened timelines. Use every segment index (not
     # run_indices): unselected「选择运行」slots still fill merge/export from disk.
@@ -653,6 +655,9 @@ def _execute_director_plan_core(
         if rolling_run.pending[index].get("handoff") != completed_av_handoff.get(index):
             update_rolling_handoff(node_id, previous, plan, completed_av_handoff.get(index),
                                    completed_audios.get(index))
+        junctions.save_boundary(node_id, previous, plan, frames, completed_audios.get(index))
+        junctions.save_boundary(node_id, previous, plan, completed_pre_refine.get(index),
+                                completed_audios.get(index) if execution_mode == "first_pass" else None, first_pass=True)
         try:
             rolling_run.flush(previous, frames, completed_pre_refine.get(index),
                 completed_pre_face.get(index) if export_pre_face_refine else None,
@@ -742,7 +747,6 @@ def _execute_director_plan_core(
         # ── Continuity gate ─────────────────────────────────────────────
         # OFF → official MiniMax H3 path only (no prev load / pin / patch).
         # ON  → after stock conditioning, pin previous AV tail (incl. r2v/v2v/rv2v).
-        continuity_active = is_continuity_active(plan, seg)
         prev_tail = None
         prev_av = None
         prev_first_pass_av = None
@@ -750,108 +754,51 @@ def _execute_director_plan_core(
         prev_audio = None
         prev_end_frame = None
         prev_idx = seg.index - 1
-        if continuity_active:
-            if prev_idx in passthrough_indices:
-                raise ValueError(
-                    f"段间连贯：片段 #{seg.index + 1} 的前一段 #{prev_idx + 1} "
-                    "是源视频透传（未采样/无有效缓存），不能作为 motion context。"
-                    "请先运行该段，或将其纳入「选择运行」。"
-                )
-            prev_seg = all_segments[prev_idx] if prev_idx >= 0 else None
-            prev_from_this_run = prev_idx in resampled_this_run
-            try:
-                prev_tail = resolve_prev_segment_output(
-                    plan, all_segments, seg.index, completed_outputs, node_id
-                )
-            except ValueError as exc:
-                # No frame cache for prev (partial re-run, never rendered):
-                # continue; AV latent on disk may still pin. If neither
-                # exists, skip motion context instead of aborting the queue.
-                log.info(
-                    "Segment %d continuity resolve failed (%s); "
-                    "will pin from AV cache if present.",
-                    seg.index + 1,
-                    exc,
-                )
-                prev_tail = None
-            # Hydrate prev into completed_* so phase-align trim can rewrite
-            # in-memory exports + disk cache even on「分段导出」/ partial re-run
-            # (resolve_prev may return a cache tensor without storing it).
-            if prev_idx >= 0 and prev_tail is not None and prev_idx not in completed_outputs:
-                completed_outputs[prev_idx] = prev_tail
-            prev_av = completed_av_latents.get(prev_idx)
-            if prev_av is None and prev_seg is not None:
-                prev_av = load_segment_av_latent(
-                    node_id, prev_seg, plan, allow_stale=True
-                )
-                if prev_av is not None:
-                    completed_av_latents[prev_idx] = prev_av
-            prev_first_pass_av = completed_first_pass_av.get(prev_idx)
-            if prev_first_pass_av is None and prev_seg is not None:
-                prev_first_pass_av = load_first_pass_av_latent(
-                    node_id, prev_seg, plan, allow_stale=True
-                )
-                if prev_first_pass_av is not None:
-                    completed_first_pass_av[prev_idx] = prev_first_pass_av
-            prev_low_carry = completed_low_carry.get(prev_idx)
-            if prev_low_carry is None and prev_seg is not None and selflift_enabled(plan):
-                prev_low_carry = load_first_pass_low_carry(
-                    node_id, prev_seg, plan, allow_stale=True
-                )
-                if prev_low_carry is not None:
-                    completed_low_carry[prev_idx] = prev_low_carry
-            prev_handoff = completed_av_handoff.get(prev_idx)
-            if prev_handoff is None and prev_seg is not None:
-                prev_handoff = load_segment_handoff_meta(
-                    node_id, prev_seg, plan, allow_stale=True
-                )
-                if prev_handoff is not None:
-                    completed_av_handoff[prev_idx] = prev_handoff
-            prev_audio = completed_audios.get(prev_idx)
-            if prev_audio is None and prev_seg is not None:
-                prev_audio = load_segment_audio(
-                    node_id, prev_seg, plan, allow_stale=True
-                )
-                if prev_audio is not None:
-                    completed_audios[prev_idx] = prev_audio
-            if rolling and prev_tail is None and prev_av is not None:
-                # A prior rolling run persists AV instead of full RGB. Re-decode
-                # just this predecessor, once, for exact grade/phase semantics.
-                restored, restored_audio = _decode_av_latent(prev_av, vae, audio_vae, decode_audio=decode_audio)
-                info = prev_handoff or {}
-                restored, restored_audio = _trim_decoded_to_export(restored, restored_audio,
-                    trim_frames=int(info.get("trim_frames") or 0),
-                    export_len=int(info.get("export_frames") or restored.shape[0]), plan=plan)
-                prev_tail = restored.detach().cpu().float()
-                completed_outputs[prev_idx] = prev_tail
-                if restored_audio is not None and prev_audio is None:
-                    prev_audio = restored_audio
-                    completed_audios[prev_idx] = prev_audio
-                del restored, restored_audio
-            if prev_av is None and prev_tail is None:
-                reports.append(
-                    f"Segment {seg.index + 1}/{timeline_seg_total}: "
-                    "上一段无有效缓存，已跳过段间引导"
-                    "（重跑上一段或将其纳入「选择运行」可恢复衔接）"
-                )
-            elif not prev_from_this_run:
-                reports.append(
-                    f"Segment {seg.index + 1}/{timeline_seg_total}: "
-                    f"引导接自上一段 #{prev_idx + 1} 的磁盘缓存"
-                    "（该段本轮未重跑；接缝对齐成片中的旧结果）"
-                )
-            if prev_handoff:
-                prev_end_frame = handoff_end_frame(
-                    trim_frames=int(prev_handoff.get("trim_frames") or 0),
-                    export_frames=int(prev_handoff.get("export_frames") or 0),
-                )
-                sample_f = int(prev_handoff.get("sample_frames") or 0)
-                # Absolute latent tail is only safe when it equals the export end.
-                if sample_f > 0 and prev_end_frame >= sample_f:
-                    prev_end_frame = None
-            else:
-                # Pixel fallback: decoded export has no overshoot beyond the file.
-                prev_end_frame = None
+        link_state = junctions.links(plan, seg)
+        continuity_active = link_state["left"]
+        right_frame = None
+        right_frame_index = None
+        if skip_first_sample:
+            # Frozen first-pass constraints survive refinement, even after a
+            # neighbour is replaced/deleted. No neighbouring AV is hydrated.
+            lock = pre_cache["av_latent"].get(junctions.LOCK_KEY) or {}
+            right_frame = lock.get("frame")
+            right_frame_index = lock.get("frame_index")
+            reports.append(f"Segment {ui_idx + 1}: 沿用已确认一采的接点约束，不重新读取邻段")
+        else:
+            if continuity_active:
+                if prev_idx in passthrough_indices:
+                    raise ValueError(f"第 {seg.index + 1} 段左接点：第 {prev_idx + 1} 段为透传，缺少生成缓存；请断开连接线或先生成该段。")
+                if prev_idx in resampled_this_run:
+                    prev_tail = completed_outputs.get(prev_idx)
+                    prev_av = completed_av_latents.get(prev_idx)
+                    prev_first_pass_av = completed_first_pass_av.get(prev_idx)
+                    prev_low_carry = completed_low_carry.get(prev_idx)
+                    prev_audio = completed_audios.get(prev_idx)
+                    previous_handoff = completed_av_handoff.get(prev_idx) or {}
+                    if previous_handoff:
+                        prev_end_frame = handoff_end_frame(
+                            trim_frames=int(previous_handoff.get("trim_frames") or 0),
+                            export_frames=int(previous_handoff.get("export_frames") or 0))
+                        if prev_end_frame >= int(previous_handoff.get("sample_frames") or 0):
+                            prev_end_frame = None
+                else:
+                    try:
+                        prev_tail, prev_audio = junctions.load_boundary(
+                            node_id, all_segments[prev_idx], plan, "tail", entries=junction_entries)
+                    except Exception as exc:
+                        raise ValueError(f"第 {seg.index + 1} 段左接点需要第 {prev_idx + 1} 段缓存：{exc}") from exc
+                    reports.append(f"Segment {ui_idx + 1}: 左接点读取第 {prev_idx + 1} 段尾部 {len(prev_tail)} 帧（未重跑邻段）")
+                if prev_tail is None and prev_av is None:
+                    raise ValueError(f"第 {seg.index + 1} 段左接点缺少第 {prev_idx + 1} 段结果，已停止；请恢复缓存或断开连接线。")
+            next_idx = seg.index + 1
+            if link_state["right"] and next_idx not in run_indices:
+                try:
+                    right_frame, _ = junctions.load_boundary(
+                        node_id, all_segments[next_idx], plan, "head", entries=junction_entries)
+                except Exception as exc:
+                    raise ValueError(f"第 {seg.index + 1} 段右接点需要第 {next_idx + 1} 段缓存：{exc}") from exc
+                reports.append(f"Segment {ui_idx + 1}: 右接点锁定第 {next_idx + 1} 段实际导出首帧（未重跑邻段）")
 
         ctx_w = int(plan.width)
         ctx_h = int(plan.height)
@@ -918,13 +865,11 @@ def _execute_director_plan_core(
             plan, seg, clip_frames=clip_frames, ctx_w=ctx_w, ctx_h=ctx_h, prev_tail=None,
         )
 
-        # i2v with an explicit new start image = fresh anchor (skip motion context).
+        # Connected left edge takes precedence over a manually supplied start image.
         # fl2v keeps last_frame when continuity is on; first_frame yields to context head.
         # r2v/v2v/rv2v: always eligible for MC when continuity_active (refs stay).
-        i2v_new_anchor = seg.task_key == "i2v" and first_frame is not None
         use_motion_context = (
             continuity_active
-            and not i2v_new_anchor
             and (prev_av is not None or prev_tail is not None)
         )
         if skip_first_sample:
@@ -1021,7 +966,7 @@ def _execute_director_plan_core(
             # Phase-align can pin a few frames before the previous export end.
             # Drop that orphaned tail so concat does not replay it at the seam.
             trimmed_prev_export = 0
-            if prev_export_trim > 0 and rolling_full_export(plan) and prev_idx not in run_indices:
+            if prev_export_trim > 0 and prev_idx not in run_indices:
                 reports.append(f"Segment {prev_idx + 1}: 未选段保留已有视频长度，不重写其裁剪记录；请检查替换接点。")
                 prev_export_trim = 0
             if prev_export_trim > 0:
@@ -1235,6 +1180,13 @@ def _execute_director_plan_core(
                 )
             )
 
+        if right_frame is not None and not skip_first_sample:
+            right_frame_index = trim_frames + continuity_export_len(
+                trim_frames=trim_frames, sample_len=sample_len, visible_frames=num_frames,
+                target_len=target_len, keep_tail=bool(getattr(plan, "continuity_keep_tail", True))) - 1
+            positive = junctions.apply_end_lock(positive, latent, right_frame, vae,
+                                               frame_index=right_frame_index)
+
         report_director_progress(
             progress_node_id, segment_index=progress_index, segment_total=seg_total,
             phase="context_encode", phase_value=1, phase_max=1, **meta,
@@ -1358,13 +1310,20 @@ def _execute_director_plan_core(
         cached_export_limit = 0
         if rolling and skip_first_sample and (pre_cache.get("handoff") or {}).get("phase_align_trim"):
             cached_export_limit = int(pre_cache["handoff"].get("export_frames") or 0)
+        if not skip_first_sample:
+            samples = dict(samples)
+            if right_frame is not None:
+                samples[junctions.LOCK_KEY] = {"frame": right_frame.detach().cpu().clone(),
+                                               "frame_index": right_frame_index}
+            else:
+                samples.pop(junctions.LOCK_KEY, None)
         first_pass_samples = samples
         completed_first_pass_av[seg.index] = first_pass_samples
         if low_memory and not skip_first_sample:
             # Persist the expensive AV result before allocating decoded RGB.
             save_first_pass_cache(node_id, seg, plan, av_latent=first_pass_samples,
                 low_carry=completed_low_carry.get(seg.index),
-                handoff={"trim_frames": int(trim_frames),
+                handoff={"junction_links": link_state, "junction_right_locked": right_frame is not None, "trim_frames": int(trim_frames),
                          "export_frames": int(continuity_export_len(trim_frames=trim_frames,
                              sample_len=sample_len, visible_frames=num_frames, target_len=target_len,
                              keep_tail=bool(getattr(plan, "continuity_keep_tail", True)))),
@@ -1426,7 +1385,7 @@ def _execute_director_plan_core(
         if cached_export_limit > 0:
             export_len = min(export_len, cached_export_limit)
         if (will_refine or continuity_active or run_face_refine or selflift_enabled(plan)
-                or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample and not low_memory:
+                or right_frame is not None or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample and not low_memory:
             save_first_pass_cache(
                 node_id,
                 seg,
@@ -1435,6 +1394,8 @@ def _execute_director_plan_core(
                 frames=pre_export,
                 low_carry=completed_low_carry.get(seg.index),
                 handoff={
+                    "junction_links": link_state,
+                    "junction_right_locked": right_frame is not None,
                     "trim_frames": int(trim_frames),
                     "export_frames": int(export_len),
                     "sample_frames": int(sample_len),
@@ -1511,9 +1472,11 @@ def _execute_director_plan_core(
                 first_pass_images=upscale_frames,
                 trim_frames=trim_frames,
                 on_pass=_export_refine_pass if mp4_run_dir is not None else None,
-                prev_refine_av=completed_av_latents.get(prev_idx) if prev_idx >= 0 else None,
+                prev_refine_av=completed_av_latents.get(prev_idx) if prev_idx >= 0 and not skip_first_sample else None,
                 prev_end_frame=prev_end_frame,
                 prev_tail=prev_tail,
+                right_frame=right_frame, right_frame_index=right_frame_index,
+                reuse_first_pass=skip_first_sample,
                 shift_cache=shift_cache,
             )
         elif hold_after_first:
@@ -1678,7 +1641,7 @@ def _execute_director_plan_core(
             )
             if not run_refine:
                 pre_chunk = chunk
-        if low_memory and plan.continuity_enabled and prev_idx in resampled_this_run:
+        if low_memory and continuity_active and prev_idx in resampled_this_run:
             # Run the original whole-concat seam treatment on this adjacent
             # pair before either clip is released. Never build a full timeline.
             stages = [(completed_outputs, segment_outputs, chunk),
@@ -1747,6 +1710,9 @@ def _execute_director_plan_core(
                 handoff=handoff,
                 audio=audio_dict if isinstance(audio_dict, dict) else None,
             )
+        if write_cache:
+            junctions.save_boundary(node_id, seg, plan, pre_chunk,
+                                   audio_dict if execution_mode == "first_pass" else None, first_pass=True)
         cache_s = time.perf_counter() - t_cache
         completed_outputs[seg.index] = chunk
         completed_pre_refine[seg.index] = pre_chunk
