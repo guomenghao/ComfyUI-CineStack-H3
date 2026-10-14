@@ -37,7 +37,8 @@ def main():
     assert len(keys) == len(set(keys)), "Duplicate node mappings"
     assert set(keys) == set(mapping.values()), "Node registry and migration mapping disagree"
     for rel in ("LICENSE", "NOTICE", "director/segment_seed.py", "director/refine_only.py",
-                "web/js/minimax_segment_seed.js", "web/js/cinestack_migration.js", "node_ids.json"):
+                "web/js/minimax_segment_seed.js", "web/js/cinestack_migration.js", "node_ids.json",
+                "web/js/cinestack_director_overview.js", "director/execution_mode.py"):
         assert (ROOT / rel).is_file(), f"Missing runtime/release file: {rel}"
     for path in (ROOT / "example_workflows").glob("*.json"):
         graph = json.loads(path.read_text())

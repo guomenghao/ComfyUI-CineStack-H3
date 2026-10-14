@@ -592,6 +592,7 @@ def build_export_pack(timeline: dict, widgets: dict | None = None, *, dry_run: b
         "format": PACK_FORMAT,
         "formatVersion": PACK_VERSION,
         "taskType": task_key,
+        "executionMode": data.get("executionMode", "legacy"),
         "widgets": {
             k: widgets[k]
             for k in ("steps", "sampler", "scheduler", "cfg", "shift_video", "shift_audio", "seed", "task_type")
@@ -850,6 +851,7 @@ def _assemble_timeline(extracted: Path, pack_meta: dict) -> dict:
     timeline = {
         "version": 5,
         "timelineMode": mode,
+        "executionMode": pack_meta.get("executionMode", "legacy"),
         "editMode": "segment" if mode != "video" else "global",
         "frameRate": output.get("frameRate") or 24,
         "totalFrames": cursor or 124,

@@ -301,7 +301,7 @@ def sample_selflift_stage(
         sigma_t = _sigma_vec(sigmas)
     else:
         from comfy_extras.nodes_custom_sampler import BasicScheduler
-        from comfy_extras.nodes_cineStack_h3 import MiniMaxH3SigmaShift
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3SigmaShift
 
         def _unpack(out):
             if hasattr(out, "args") and out.args:

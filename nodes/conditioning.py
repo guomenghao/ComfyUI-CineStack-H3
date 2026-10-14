@@ -41,14 +41,15 @@ def _shared_optional_inputs() -> dict:
 
 def _load_cineStack_nodes():
     try:
-        from comfy_extras.nodes_cineStack_h3 import (
+        from comfy_extras.nodes_minimax_h3 import (
             MiniMaxH3ImageToVideo,
             MiniMaxH3ReferenceToVideo,
         )
     except ImportError as exc:
         raise RuntimeError(
             "CineStackH3Director requires ComfyUI official MiniMax H3 nodes "
-            "(comfy_extras.nodes_cineStack_h3). Upgrade to ComfyUI with PR #15224 merged."
+            "(comfy_extras.nodes_minimax_h3). Check that this module and its "
+            f"dependencies are available. Original import error: {exc}"
         ) from exc
     return MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo
 

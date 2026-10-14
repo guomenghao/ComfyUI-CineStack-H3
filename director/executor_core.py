@@ -450,6 +450,9 @@ def execute_director_plan_core(
     # 缓存目录 key：填了「缓存文件夹名」用 <名字>_<节点id>，留空则只有节点 id（老工作流行为不变）。
     # 进度上报必须继续用真实节点 id —— 前端是按画布节点 id 认进度条的。
     progress_node_id = node_id
+    from .execution_mode import apply_director_execution_mode
+
+    execution_mode = apply_director_execution_mode(plan)
     node_id = resolve_segment_cache_key(cache_name, node_id)
     plan.sample_seed = int(seed)
     plan.sample_cfg = float(cfg)
@@ -1339,7 +1342,7 @@ def execute_director_plan_core(
             keep_tail=bool(getattr(plan, "continuity_keep_tail", True)),
         )
         if (will_refine or continuity_active or run_face_refine or selflift_enabled(plan)
-                or seg.first_pass_seed is not None) and not skip_first_sample:
+                or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample:
             save_first_pass_cache(
                 node_id,
                 seg,

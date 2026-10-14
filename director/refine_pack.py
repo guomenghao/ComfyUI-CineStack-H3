@@ -57,7 +57,7 @@ def parse_refine_sigmas(raw: Any, *, fallback: bool = False) -> tuple[float, ...
             try:
                 vals.append(float(part))
             except (TypeError, ValueError):
-                continue
+                raise ValueError(f"Refine SIGMAS 含无效数值：{part!r}") from None
     else:
         text = str(raw or "").replace(";", ",").replace("\n", ",")
         for part in text.split(","):
@@ -67,7 +67,9 @@ def parse_refine_sigmas(raw: Any, *, fallback: bool = False) -> tuple[float, ...
             try:
                 vals.append(float(token))
             except (TypeError, ValueError):
-                continue
+                raise ValueError(f"Refine SIGMAS 含无效数值：{token!r}") from None
+    if any(not math.isfinite(value) or value < 0 for value in vals):
+        raise ValueError("Refine SIGMAS 必须全部为有限的非负数，不能包含 NaN / Infinity / 负数。")
     if len(vals) < 2:
         if not fallback:
             raise ValueError(
@@ -88,10 +90,7 @@ def first_pass_sigmas_override(raw: Any):
     """Optional Director first-pass SIGMAS. None = use steps + scheduler."""
     if raw is None:
         return None
-    try:
-        return parse_refine_sigmas(raw, fallback=False)
-    except (TypeError, ValueError):
-        return None
+    return parse_refine_sigmas(raw, fallback=False)
 
 
 def refine_sigmas_override(pack: dict[str, Any] | None):

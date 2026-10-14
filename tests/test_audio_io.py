@@ -1,6 +1,9 @@
-"""Run with ComfyUI on PYTHONPATH and ffmpeg/ffprobe on PATH."""
+"""Real FFmpeg audio tests; unused Comfy video adapters are stubbed on CPU."""
+import importlib
 import shutil
+import sys
 import tempfile
+import types
 import unittest
 import wave
 from pathlib import Path
@@ -8,6 +11,23 @@ from unittest import mock
 
 import numpy as np
 
+# Audio decode does not call these video/image adapters. Keep the audio tests
+# runnable without a Comfy checkout; fail explicitly if an adapter is used.
+adapters = {}
+for name in ("folder_paths", "comfy.utils"):
+    try:
+        importlib.import_module(name)
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"folder_paths", "comfy", "comfy.utils"}:
+            raise
+        adapters[name] = types.ModuleType(name)
+if "comfy.utils" in adapters:
+    adapters["comfy"] = types.ModuleType("comfy")
+    adapters["comfy.utils"].common_upscale = mock.Mock(side_effect=AssertionError("Audio test called Comfy image adapter"))
+    adapters["comfy"].utils = adapters["comfy.utils"]
+# Do not roll back sys.modules around a torch import: reimporting torch's C
+# extension after rollback is unsafe. These adapters live in this test process.
+sys.modules.update(adapters)
 from lib import audio_io
 
 

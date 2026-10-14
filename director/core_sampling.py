@@ -1,7 +1,7 @@
 # Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 """Single-stage sampling via official MiniMax H3 custom-sampler nodes.
 
-Matches ``video_cineStack_h3_r2v.json``:
+Matches ``video_minimax_h3_r2v.json``:
 MiniMaxH3SigmaShift → BasicScheduler → BasicGuider (or CFGGuider) →
 KSamplerSelect → RandomNoise → SamplerCustomAdvanced.
 """
@@ -93,7 +93,7 @@ class ShiftedModelCache:
         hit = self._items.get(key)
         if hit is not None:
             return hit
-        from comfy_extras.nodes_cineStack_h3 import MiniMaxH3SigmaShift
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3SigmaShift
 
         shifted = MiniMaxH3SigmaShift.execute(model, float(shift_video), float(shift_audio))
         model_use = _unpack_node_output(shifted)[0]
@@ -145,7 +145,7 @@ def sample_single_stage(
         RandomNoise,
         SamplerCustomAdvanced,
     )
-    from comfy_extras.nodes_cineStack_h3 import MiniMaxH3SigmaShift
+    from comfy_extras.nodes_minimax_h3 import MiniMaxH3SigmaShift
 
     def notify(phase: str, value: float) -> None:
         if on_phase:

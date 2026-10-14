@@ -359,15 +359,29 @@ function graphNodes() {
     return graph?._nodes ?? graph?.nodes ?? [];
 }
 
+export function connectedRefineForDirector(node) {
+    const graph = node?.graph || app.graph;
+    let input = node?.inputs?.find((i) => i.name === "refine");
+    const visited = new Set();
+    while (input?.link != null && !visited.has(input.link)) {
+        visited.add(input.link);
+        const link = graph?.links?.[input.link] || graph?._links?.[input.link];
+        const source = graph?.getNodeById?.(link?.origin_id)
+            || (graph?._nodes || []).find((n) => String(n.id) === String(link?.origin_id));
+        if (!source || (source.mode != null && source.mode !== 0)) return null;
+        if (isRefineNode(source)) return source;
+        if (source.type !== "Reroute") return null;
+        input = source.inputs?.[0];
+    }
+    return null;
+}
+
 function connectedDirector(refineNode) {
     const graph = refineNode?.graph ?? app.graph ?? app.canvas?.graph;
     for (const candidate of graphNodes()) {
         const cls = candidate?.comfyClass || candidate?.type || "";
         if (!DIRECTOR_CLASSES.has(cls)) continue;
-        const input = candidate.inputs?.find((item) => item?.name === "refine");
-        if (input?.link == null) continue;
-        const link = graph?.links?.[input.link] ?? graph?._links?.[input.link];
-        if (String(link?.origin_id) === String(refineNode.id)) return candidate;
+        if (connectedRefineForDirector(candidate) === refineNode) return candidate;
     }
     return null;
 }
@@ -381,6 +395,7 @@ function directorValue(node, name, fallback) {
 const CACHE_DIFF_LABELS = {
     seed: "seed",
     segment_seed: "分段一采 seed",
+    segment_loras: "分段 LoRA（权重/顺序/文件）",
     start: "片段起点",
     end: "片段终点（时间范围变化）",
     prompt: "提示词",
@@ -452,7 +467,7 @@ const CACHE_DIFF_LABELS = {
     refine_skip_fl2v: "跳过 fl2v 二采",
 };
 
-function diffLabel(key) {
+export function diffLabel(key) {
     return CACHE_DIFF_LABELS[key] || key;
 }
 
@@ -562,7 +577,7 @@ function sortDiffKeys(keys) {
     });
 }
 
-function cacheStatusPayload(director, refine) {
+export function cacheStatusPayload(director, refine) {
     try {
         director?._cineStackEditor?._writeTimelineWidget?.();
     } catch {
@@ -734,11 +749,16 @@ async function refreshFirstPassCacheStatus(node) {
 }
 
 function scheduleCacheStatusRefresh(node, delay = 120) {
+    const overview = connectedDirector(node)?._cineStackEditor?.overview;
+    overview?.update();
+    overview?.invalidate(delay);
     clearTimeout(node._mmxCacheStatusTimer);
     node._mmxCacheStatusTimer = setTimeout(() => refreshFirstPassCacheStatus(node), delay);
 }
 
 function refreshCacheStatusForDirector(director, delay = 120) {
+    director?._cineStackEditor?.overview?.update();
+    director?._cineStackEditor?.overview?.invalidate(delay);
     for (const node of graphNodes()) {
         if (
             isRefineNode(node)

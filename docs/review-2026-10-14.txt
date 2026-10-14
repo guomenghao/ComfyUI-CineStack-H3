@@ -1,0 +1,118 @@
+影栈 CineStack H3 全面复查记录
+日期：2026-10-14；复查对象：本地 0.2.0 开发版本，修复版本：0.2.1。
+
+结论
+完成源码、CPU 回归、浏览器交互、迁移、发布配置及交付包检查，并修复下列已复现问题。
+目前适合交付用户进行真实 ComfyUI/GPU 验收，尚不能认定已满足正式上架验收。
+本复查记录生成时没有触发 Registry 发布、远程推送、读取发布密钥或修改用户的模型与视频文件。后续用户授权的 GitHub 上传以实际仓库记录为准。
+
+一、已修复问题与证据
+
+1. P1：分段 LoRA 改动未使缓存失配。
+   复现：保存一采缓存后，新增/修改分段 LoRA，原一采及成片指纹仍相同。
+   修复：有效 LoRA 的名称、顺序、精确强度、文件大小和纳秒修改时间纳入缓存身份；零强度或禁用栈保持旧指纹。
+   文件：director/segment_cache.py；回归覆盖新增 LoRA、文件替换、顺序改变、禁用/零强度及严格执行拒绝。
+   兼容边界：旧版带有效 LoRA 的缓存缺少新字段，必须明确重做对应一采，系统只提示失配，不会自动补跑。
+
+2. P1：仅二采失败仍可能返回一采或部分成功结果。
+   复现：模拟采样器 OOM 或多轮二采后续轮失败，原函数吞掉异常，返回首轮/一采 latent。
+   修复：严格仅二采抛出包含具体段号、原始错误和不回退说明的异常；普通旧模式保留原有降级行为和失败报告。
+   文件：director/refine_sampling.py；回归同时覆盖严格首轮失败、后续轮失败和旧模式降级。
+   注意：这是停止后续执行，并非整个批次的事务回滚；先前完成的段及显式分轮导出可能已保存在磁盘上。
+
+3. P1：异步检查期间改执行方式可能意外提交其他操作。
+   复现路径：点击仅二采，等待检查时切换仅一采，旧提交函数可能继续调用宿主队列。
+   修复：检查前设置 busy 锁；检查结果必须与当前设置及请求序号一致；设置变化、请求失效或编辑器销毁均取消提交。
+   文件：web/js/cinestack_director_overview.js；真实浏览器覆盖等待期间改模式、重复提交及锁释放。
+
+4. P2：CFG/shift 为 0 时缓存判断错误。
+   复现：HTTP 检查把 0 变成默认 1/12/3，缓存指纹也有相同真值回退。
+   修复：区分缺失值与显式零值；真实 HTTP handler 和缓存指纹各有回归。
+   文件：director/http_routes.py、director/segment_cache.py。
+   升级后旧版以这些零参数生成但被错误标记默认值的缓存会失配，须明确重做对应一采。
+
+5. P2：无效 SIGMAS 可被接受或静默更换采样计划。
+   修复：拒绝 NaN、Infinity、负数、非数字和不足长度；已提供但无效的一采 SIGMAS 不再回退为 steps/scheduler。
+   文件：director/refine_pack.py；回归确认一采、二采在采样前拒绝无效输入，一采错误不触发缓存清理。
+   有效既有调度序列保持原行为，未额外要求单调递减；非零结尾仍按原逻辑补 0。
+
+6. P2：宿主队列未确认时界面仍显示“已提交”。
+   官方 queuePrompt 返回 boolean；旧实现只等待 Promise，忽略 false。
+   修复：false 显示“尚未确认提交，请查看宿主队列或错误提示”，避免误报成功或自动重试。
+   false 在某些宿主状态也可能表示由现有队列处理，故没有断言“肯定提交失败”。
+   文件：web/js/cinestack_director_overview.js；浏览器模拟 false 返回验证。
+
+7. P2：Refine 设置改变后工作台状态可能滞后，Reroute 下两个面板识别不一致。
+   修复：Refine 设置与接线参与状态失效，刷新回调同步工作台；两个面板共用能识别旁路和接线循环的解析器。
+   文件：web/js/minimax_refine.js、web/js/cinestack_director_overview.js；浏览器覆盖设置改变、Reroute、循环和旁路。
+
+8. P2：宽浏览器里的窄 Comfy 节点不能仅依赖窗口媒体查询适配。
+   修复：工作台增加容器查询；浏览器验证 1380px 窗口内 540px 节点和 600px 窗口均无工作台横向溢出。
+   已查看桌面与窄面板截图；不将模拟宿主预览等同于真实 Comfy 画布缩放验收。
+
+9. P2：测试发现与发布检查不完整。
+   原音频测试在缺少 Comfy 宿主时导入失败，原 CI 只选择部分文件执行。
+   修复：音频测试显式适配未使用的视频宿主依赖；CI 运行全部 Python 测试并安装 FFmpeg。
+   手动发布工作流现在依赖 CPU/浏览器回归通过后才能进入发布步骤。
+   文件：tests/test_audio_io.py、.github/workflows/ci.yml、.github/workflows/publish.yml。
+   本地检查配置有效不代表 GitHub 远程 CI 已执行，本轮未触发远程任务。
+
+10. P3：不精确的全局数字 seed 可被“固定当前值”，以及无图行重复创建占位 DOM。
+    修复：超出浏览器安全整数范围的全局数字不能一键固定，提示直接填写精确十进制分段 seed；完整 uint64 字符串输入不变。
+    无图占位只在来源改变时重建，状态签名排除嵌套预览图数据。
+    文件：web/js/cinestack_director_overview.js；浏览器覆盖大整数保护和原有精确种子同步。
+
+二、复查范围与验证结果
+
+- 计划/执行：逐段 seed、空值继承、零、uint64 上限、五段混合种子、选段运行、一/二采切换、预检顺序、运行中缓存消失、旧确认流程。
+- 缓存：真实 JSON 元数据和 torch AV 文件，缺失/失配/损坏拒绝，SelfLift、外部 Group、SIGMAS、LoRA、参数差异文本。
+- 前端：真实编辑器和模块在 Chrome 中运行；模拟宿主队列/缓存服务；总览、卡片双向同步、FL2V、迁移、异步提交、状态失效、布局、销毁。
+- 兼容：旧节点标识迁移、图 ID/接线/widgets_values 保持、导演包往返、外接组、9 个示例；未增加位置型输入或改节点 ID。
+- 发布：元数据、依赖列表一致性、Apache-2.0/NOTICE、手动发布依赖与版本检查、运行文件清单、源码/交付包字节与 SHA-256 一致性。
+
+本机 Python 3.11 / torch CPU：56 项测试，54 通过，2 跳过。
+跳过项是实际 FFmpeg/ffprobe 音频采样率/回退测试，本机没有这两个程序；不是已通过的音频效果验收。
+Chrome：种子/迁移专项 26 项，工作台专项含布局共 38 项，合计 64 项通过。
+81 个 Python 文件通过 Python 3.10 语法解析；17 个前端 JS 文件语法检查通过；9 个示例 JSON 可解析。
+发布身份/依赖检查和 git diff --check 通过。Python 3.10 运行时兼容没有实机执行，仅做语法检查。
+
+命令（仓库根目录）：
+python -m unittest discover -s tests -p 'test_*.py' -v
+node tests/test_segment_seed_frontend.mjs
+node tests/test_director_overview_frontend.mjs
+python tools/check_release.py --publish
+浏览器测试需要 Playwright 和 Chrome/Chromium；--publish 在这里仅检查元数据，不调用发布。
+
+三、仍需知道的边界
+
+1. 尚未在用户的 ComfyUI 0.39.2 / RTX 5070 Ti 16GB 上加载完整节点并运行真实 H3 模型。
+   推理画质、显存峰值、模型卸载、实际耗时、音视频同步、GPU 二采和脸修不能由 CPU/模拟宿主测试证明。
+2. 缓存没有完整 MODEL/CLIP/VAE 内容哈希；图外 LoRA、同名图片/视频覆盖及部分模型输入变化仍存在身份识别边界。
+   新 LoRA 文件检测采用 size/mtime，不是内容哈希；刻意保留大小与修改时间的替换也不能检测。
+   外接组状态面板只持图接线见证，不能重建完整运行张量；真正执行仍逐段验证缓存。
+   更换上述输入后应使用新的 cache_name 或明确重做相关一采，不能把“元数据匹配”当成全部内容一致。
+3. 连贯开启时，后段缓存保留的是生成当时的旧前段上下文。前段变更不会自动重做后段，也不保证新旧接缝自然。
+4. 未勾选段按原语义从旧缓存/真实源画面填充；本次没有把“保留旧结果”改成全参数强制重算。
+5. “成片缓存存在”只是文件存在；不证明已经完成全部二采。普通旧模式仍可能按上游逻辑降级为一采。
+6. 工作台按钮提交当前整个工作流；上游连接的模型等依赖仍由 ComfyUI 调度，不是只向服务器发送单一片段。
+7. 旧代码仍有较大的时间轴脚本和全局 bd-* 样式。新增工作台使用独立作用域；完整模块拆分/多插件同屏兼容可后续专项处理。
+8. 本地版本已更新；生成本复查交付文件夹本身不会更新 GitHub 或 Registry。复查交付阶段保留已有更改，未提交或推送 Git；后续 GitHub 上传以实际仓库记录为准。
+
+四、上架前需要的实际验收
+
+在目标设备完成节点加载、旧工作流恢复、5 段 A/A/B/A/A 一采、全选仅二采、单段改 seed 拒绝、单段明确重做、缓存损坏拒绝、FL2V 与外接组/导演包往返。
+记录 GPU/Comfy 版本、显存峰值、生成耗时、音视频同步与输出文件；再运行远程 CI，并由用户决定手动发布。
+DMAD、DLSS 和未来完整影视平台没有纳入本轮改动。
+
+五、核对的官方来源
+
+ComfyUI 前端 queuePrompt 接口（包括 boolean 返回与队列处理）：
+https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/src/scripts/app.ts
+官方 H3 模块身份：
+https://github.com/Comfy-Org/ComfyUI/blob/master/comfy_extras/nodes_minimax_h3.py
+Registry 发布 Action 输入定义：
+https://github.com/Comfy-Org/publish-node-action/blob/main/action.yml
+GitHub Action 标签：
+https://github.com/actions/checkout/releases/tag/v7
+https://github.com/actions/setup-python/releases/tag/v6
+https://github.com/actions/setup-node/releases/tag/v6

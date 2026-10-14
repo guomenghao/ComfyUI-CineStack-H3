@@ -554,13 +554,13 @@ async def minimax_first_pass_cache_status(request):
             ref_max_size=int(body.get("ref_max_size") or 864),
         )
         plan.sample_seed = int(body.get("seed") or 0)
-        plan.sample_cfg = float(body.get("cfg") or 1.0)
+        plan.sample_cfg = float(body["cfg"] if body.get("cfg") is not None else 1.0)
         plan.sample_steps = int(body.get("steps") or 25)
         plan.sample_sampler = str(body.get("sampler") or "")
         plan.sample_scheduler = str(body.get("scheduler") or "")
         plan.sample_sigmas_linked = bool(body.get("sigmas_linked"))
-        plan.sample_shift_video = float(body.get("shift_video") or 12.0)
-        plan.sample_shift_audio = float(body.get("shift_audio") or 3.0)
+        plan.sample_shift_video = float(body["shift_video"] if body.get("shift_video") is not None else 12.0)
+        plan.sample_shift_audio = float(body["shift_audio"] if body.get("shift_audio") is not None else 3.0)
         from .selflift.pack import normalize_selflift_pack
         from .semantic_bridge import normalize_semantic_bridge_pack
         from .refine_pack import normalize_refine_pack
@@ -572,6 +572,9 @@ async def minimax_first_pass_cache_status(request):
             base_width=int(getattr(plan, "width", 0) or 0),
             base_height=int(getattr(plan, "height", 0) or 0),
         )
+        from .execution_mode import apply_director_execution_mode
+
+        apply_director_execution_mode(plan)
         # Graph-wired i2v_groups / r2v_groups never reach this route as values,
         # so the panel ships a witness of that wiring inside timeline_data.
         witness = external_witness_from_timeline_data(timeline_data)

@@ -1,6 +1,7 @@
 // Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 import { app } from "../../scripts/app.js";
 import { createSegmentSeedControl } from "./minimax_segment_seed.js";
+import { mountDirectorOverview } from "./cinestack_director_overview.js";
 import { api } from "../../scripts/api.js";
 import {
     CUSTOM_ASPECT_RATIO,
@@ -2307,6 +2308,8 @@ class CineStackH3DirectorEditor {
         this._observeViewportResize();
         this.syncExternalGroupsTimeline();
         this.scheduleSettleRender();
+        this.overview = mountDirectorOverview(this);
+        this.updateDomWidgetHeight();
     }
 
     _inputLinkConnected(name) {
@@ -2652,7 +2655,7 @@ class CineStackH3DirectorEditor {
     }
 
     getDirectorUiMinHeight() {
-        return getDirectorUiHeight(this);
+        return getDirectorUiHeight(this) + (this.overview?.root?.offsetHeight || 0);
     }
 
     updateDomWidgetHeight(opts = {}) {
@@ -3474,6 +3477,7 @@ class CineStackH3DirectorEditor {
 
     renderImageBatchGroups() {
         renderImageBatchGroups(this);
+        this.overview?.update();
     }
 
     normalizeImageBatchSegments() {
@@ -4022,6 +4026,7 @@ class CineStackH3DirectorEditor {
         this.canvas?.removeEventListener("mousemove", this._onCanvasHover);
         this.canvas?.classList.remove("bd-grab", "bd-grabbing");
         window.removeEventListener("keydown", this._onKeyDown, true);
+        this.overview?.dispose();
         this.root?.remove();
         this.root = null;
         if (this.node?._cineStackEditor === this) this.node._cineStackEditor = null;
@@ -4445,13 +4450,15 @@ class CineStackH3DirectorEditor {
     }
 
     _runSelectionPayload() {
+        const executionMode = this.timeline.executionMode || "legacy";
         // Never leak video-mode「选择运行」into i2v/batch (or vice versa).
         if (!this.supportsRunSelect() || !this.timeline.runSelectEnabled) {
-            return { runSelectEnabled: false, runSelection: [] };
+            return { runSelectEnabled: false, runSelection: [], executionMode };
         }
         this.normalizeRunSelection();
         return {
             runSelectEnabled: true,
+            executionMode,
             runSelection: [...(this.timeline.runSelection || [])],
         };
     }
@@ -11158,6 +11165,7 @@ class CineStackH3DirectorEditor {
     }
 
     _updateTimelineDom({ skipSeek = false } = {}) {
+        this.overview?.update();
         const segs = this._previewSegments || this.timeline.segments;
         const totalFrames = Math.max(0, this.getTotalFrames());
         const cur = this.formatTime(this.currentFrame);

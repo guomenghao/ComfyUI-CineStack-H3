@@ -9,6 +9,10 @@ CineStack modifications, 2026-10-13, maintained in guomenghao/ComfyUI-CineStack-
 - Strict cached refinement only, with specific failures instead of automatic first-pass sampling.
 - Independent node IDs, HTTP routes and progress events; workflow migration tools.
 - Project metadata, documentation, CPU/browser regression tests and release preparation.
+- Corrected external ComfyUI H3 and SolAttn identities in version 0.1.1.
+- Director segment workbench and optional first/second-pass execution intent, 2026-10-14.
+
+- Cache, strict failure, queue concurrency, input validation and responsive-layout review fixes, 2026-10-14.
 
 Original copyright, license notices and acknowledgments remain applicable.
 This is an independent derivative; it is not an AIMixer or ComfyUI official product.

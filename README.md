@@ -2,6 +2,19 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
+## 导演台分段工作台（0.2.1）
+
+导演台内可统一浏览每段缩略图、计划帧数/时长、生效一采 seed 和缓存状态，直接点击片段进入原编辑区。
+seed 留空继承全局，填写数字固定本段；“固定当前值”将继承值保存为分段 seed。总览和原卡片输入即时同步。
+
+- **按原接线**：旧工作流默认模式，保留 Refine、确认一采、脸修等原有行为。
+- **仅一采**：重新生成选中段的一采并保存 AV 缓存，跳过 Refine 与脸修。
+- **仅二采**：需启用并连接 Refine（refine/upscale）及二采 SIGMAS；只使用匹配的一采缓存，失配停止。
+
+“加入 ComfyUI 队列”提交当前工作流。运行范围与原“选择运行”同步；执行方式不修改 Refine 控件或图接线。
+缓存标记是元数据检查结果，完整 latent 校验在执行前进行；成片缓存存在不代表已经通过二采。
+界面新增设置写在 `timeline_data.executionMode`，不增加位置控件；工作流与导演包保存后保留。
+
 **影栈（CineStack）面向未来的自动化、本地影视制作工作流平台。**
 当前仓库是平台的首个 H3 生成模块，以 ComfyUI 自定义节点形式提供多段音视频导演台。
 完整独立平台、剧本管理、跨模型调度和自动剪辑属于后续规划，当前版本没有实现这些能力。
@@ -25,6 +38,24 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/guomenghao/ComfyUI-CineStack-H3.git
 python -m pip install -r ComfyUI-CineStack-H3/requirements.txt
 ```
+
+Linux 云端环境（ComfyUI 位于 `/root/ComfyUI`）：在运行 ComfyUI 的同一 Python 环境执行：
+
+```bash
+cd /root/ComfyUI/custom_nodes
+git clone https://github.com/guomenghao/ComfyUI-CineStack-H3.git
+python -m pip install -r ComfyUI-CineStack-H3/requirements.txt
+```
+
+Git 安装后更新：
+
+```bash
+cd /root/ComfyUI/custom_nodes/ComfyUI-CineStack-H3
+git pull --ff-only
+python -m pip install -r requirements.txt
+```
+
+手动复制的同名文件夹请先备份到 `custom_nodes` 外，再首次克隆。安装/更新后重启 ComfyUI，并强制刷新浏览器。
 
 重启 ComfyUI，在 `CineStack/H3` 分类添加节点，或加载 [example_workflows](example_workflows)。
 本仓库不包含模型权重、用户素材或 ComfyUI 本体。模型类型及额外注意事项参考
@@ -56,7 +87,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前为独立初始版本 `0.1.0`；尚未发布到 Comfy Registry。
+当前版本 `0.2.1` 包含分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -64,6 +95,8 @@ python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -p 'test_segment_seed_refine_only.py' -v
 python -m unittest discover -s tests -p 'test_cinestack_release.py' -v
 python tools/check_release.py
+python -m unittest discover -s tests -p 'test_official_minimax_imports.py' -v
+python -m unittest discover -s tests -p 'test_director_execution_mode.py' -v
 ```
 
 [GitHub 仓库](https://github.com/guomenghao/ComfyUI-CineStack-H3) ·

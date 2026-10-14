@@ -30,6 +30,7 @@ from .h3_latent_continue import CONTINUE_PIPELINE_ID, clamp_seam_min_mask
 from .h3_motion_context import CONTINUITY_PIPELINE_ID, trim_context_prefix, trim_export_tail
 from .plan import DirectorPlan, SegmentPlan, resolve_ref_image_size
 from .segment_seed import resolve_segment_seed, seed_from_group
+from .segment_loras import effective_lora_rows
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director.cache")
 
@@ -64,6 +65,7 @@ GROUP_DERIVED_FP_KEYS = frozenset(
         "ref_video_start",
         "continuity_from_prev",
         "ref_image_size",
+        "segment_loras",
         SOURCE_VIDEO_FP_KEY,
     }
 )
@@ -322,6 +324,22 @@ def _segment_identity_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[
     }
     if plan.continuity_enabled and bool(getattr(plan, "continuity_keep_tail", True)):
         payload["continuity_keep_tail"] = True
+    # Keep empty/disabled stacks compatible with old cache metadata. Active
+    # stacks need their exact order, strengths and on-disk replacement stamp.
+    loras = effective_lora_rows(getattr(seg, "loras", None))
+    if loras:
+        stack = []
+        for row in loras:
+            stamp = None
+            try:
+                path = folder_paths.get_full_path("loras", row["name"])
+                if path:
+                    stat = os.stat(path)
+                    stamp = [stat.st_size, stat.st_mtime_ns]
+            except (AttributeError, OSError):
+                pass
+            stack.append({"name": row["name"], "strength": float(row["strength"]), "file": stamp})
+        payload["segment_loras"] = stack
     witness = getattr(plan, "external_groups_witness", None)
     if isinstance(witness, dict):
         # This segment's own group only. The whole chain is deliberately *not*
@@ -338,6 +356,19 @@ def _segment_identity_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[
 
 
 
+def _cache_difference_values(stored, expected, keys) -> list[dict[str, str]]:
+    """Bounded display values only; never change persisted cache identities."""
+    if not isinstance(stored, dict):
+        return []
+
+    def display(value):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True) if isinstance(value, (dict, list)) else str(value)
+        return text[:180] + ("…" if len(text) > 180 else "")
+
+    return [{"key": key, "cached": display(stored.get(key)), "current": display(expected.get(key))}
+            for key in keys if key in expected][:12]
+
+
 def first_pass_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[str, Any]:
     """Exact-match key for first-pass AV latent. Refine knobs are excluded."""
     fp = _segment_identity_fingerprint(seg, plan)
@@ -346,10 +377,10 @@ def first_pass_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[s
     fp.update({
         "kind": "first_pass",
         "seed": resolve_segment_seed(seg, plan),
-        "cfg": round(float(getattr(plan, "sample_cfg", 1.0) or 1.0), 6),
+        "cfg": round(float(getattr(plan, "sample_cfg", 1.0)), 6),
         "sampler": str(getattr(plan, "sample_sampler", "") or ""),
-        "shift_video": round(float(getattr(plan, "sample_shift_video", 12.0) or 12.0), 6),
-        "shift_audio": round(float(getattr(plan, "sample_shift_audio", 3.0) or 3.0), 6),
+        "shift_video": round(float(getattr(plan, "sample_shift_video", 12.0)), 6),
+        "shift_audio": round(float(getattr(plan, "sample_shift_audio", 3.0)), 6),
     })
     if linked:
         fp["steps"] = 0
@@ -1168,7 +1199,7 @@ def first_pass_cache_problem(node_id, seg, plan) -> str | None:
               "refs": "参考图片", "ref_audios": "参考音频", "ref_videos": "参考视频",
               "steps": "一采步数", "cfg": "CFG", "sampler": "采样器", "scheduler": "调度器",
               "sigmas": "一采 SIGMAS", "frame_rate": "帧率", "external_group": "外接素材组",
-              "task_key": "生成模式", "source_video": "源视频"}
+              "task_key": "生成模式", "source_video": "源视频", "segment_loras": "分段 LoRA（权重/顺序/文件）"}
     reasons = []
     for key in diff:
         label = labels.get(key, key)
@@ -1683,6 +1714,8 @@ def _inspect_external_group_cache(
                 "task_key": stored.get("task_key") if isinstance(stored, dict) else None,
                 "expected_seed": expected_seed,
                 "expected_seed_text": str(expected_seed),
+                "final_exists": _frames_exist(root, idx, first_pass=False),
+                "differences": _cache_difference_values(stored, {**expected_knobs, "seed": expected_seed, "end": timing.get("end")}, diff),
                 "cached_seed_text": str(cached_seed) if cached_seed is not None else None,
                 "diff_keys": diff,
                 "error": read_error,
@@ -1856,6 +1889,7 @@ def inspect_first_pass_cache(
                 "task_key": seg.task_key,
                 "expected_seed": expected.get("seed"),
                 "expected_seed_text": str(expected.get("seed")),
+                "differences": _cache_difference_values(stored, expected, diff),
                 "cached_seed_text": str(cached_seed) if cached_seed is not None else None,
                 "diff_keys": diff,
                 "final_exists": final_exists,

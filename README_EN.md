@@ -36,6 +36,12 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Initial independent version 0.1.0. CPU and browser fixture regression tests are provided.
+Version 0.2.1 includes the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+
+The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
+Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),
+and Second pass only (matching cache required; never regenerate first passes). Queue submits the current ComfyUI workflow.
+Execution intent is stored in optional timeline JSON, without changing node IDs, connections or positional widgets.
+Cache labels are metadata checks; latent validation still runs before execution. Rendered-cache existence is not proof of a completed second pass.
 Actual ComfyUI and GPU/model generation acceptance remains pending; Registry publication is not yet completed.
 Publication is manually triggered after configuring your own publisher identity and Registry secret.

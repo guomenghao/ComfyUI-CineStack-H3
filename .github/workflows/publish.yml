@@ -9,7 +9,10 @@ on:
 permissions:
   contents: read
 jobs:
+  regression-checks:
+    uses: ./.github/workflows/ci.yml
   publish-node:
+    needs: regression-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

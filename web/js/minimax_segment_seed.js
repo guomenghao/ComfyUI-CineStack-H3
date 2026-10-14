@@ -11,8 +11,23 @@ export function normalizeSegmentSeed(value) {
     return BigInt(text).toString();
 }
 
+export function syncSegmentSeedControls(root) {
+    for (const control of root?.querySelectorAll?.("[data-cstk-seed-control]") || []) {
+        const input = control.querySelector("input");
+        const row = control._cstkSeedRow?.();
+        if (input && document.activeElement !== input) input.value = row?.first_pass_seed ?? "";
+        if (input) {
+            input.disabled = Boolean(row?.externalSeedLinked);
+            try { normalizeSegmentSeed(row?.first_pass_seed); input.setCustomValidity(""); }
+            catch (error) { input.setCustomValidity(error.message); }
+        }
+    }
+}
+
 export function createSegmentSeedControl(getRow, onChange, labels = {}) {
     const label = document.createElement("label");
+    label.dataset.cstkSeedControl = "true";
+    label._cstkSeedRow = getRow;
     label.style.cssText = "display:flex;align-items:center;gap:6px;min-width:0;font-size:11px";
     label.textContent = labels.label || "First-pass seed";
     const input = document.createElement("input");
@@ -38,6 +53,7 @@ export function createSegmentSeedControl(getRow, onChange, labels = {}) {
             input.setCustomValidity(error.message);
         }
         onChange?.();
+        syncSegmentSeedControls(label.closest(".bd-wrap") || label.parentElement);
     });
     input.addEventListener("change", () => {
         if (!input.reportValidity()) return;

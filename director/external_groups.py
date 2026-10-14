@@ -897,7 +897,7 @@ def build_plan_from_external_groups(
         source_video=source_video,
         segments=segments,
         edit_mode="segment",
-        raw=raw,
+        raw={**raw, "executionMode": timeline.get("executionMode", "legacy")},
         export_mode=export_mode,
         run_indices=run_indices,
         continuity_enabled=continuity_enabled,

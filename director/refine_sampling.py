@@ -18,6 +18,7 @@ from .refine_pack import (
     refine_needs_canvas,
     refine_passes_for,
     refine_seed_for,
+    refine_only_enabled,
     refine_sigmas_override,
     refine_uses_h3_latent,
 )
@@ -883,7 +884,7 @@ def apply_segment_refine(
     prev_tail: torch.Tensor | None = None,
     shift_cache=None,
 ) -> tuple[dict, str]:
-    """Run optional refine/upscale second sample. Never raises — returns first-pass on failure.
+    """Run optional refine/upscale; strict second-pass failures propagate.
 
     ``first_pass_images``: already-decoded first-pass frames (skips a second VAE
     decode in upscale mode). Includes motion-context prefix when continuity is on.
@@ -1141,6 +1142,11 @@ def apply_segment_refine(
             on_phase("refine", 1)
         return work, "refine " + ", ".join(note_parts)
     except Exception as exc:
+        if refine_only_enabled(plan):
+            index = int(getattr(seg, "timeline_index", getattr(seg, "index", 0))) + 1
+            raise RuntimeError(
+                f"仅二采已停止：第 {index} 段二采失败：{exc}；未回退为一采结果，未重跑一采。"
+            ) from exc
         log.warning(
             "Segment %s refine failed (%s); keeping %s.",
             int(getattr(seg, "index", 0)) + 1,
