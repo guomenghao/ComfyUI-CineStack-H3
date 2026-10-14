@@ -61,7 +61,7 @@ class RollingRun:
     def flush(self, seg, frames, pre, face_pre, audio):
         flags = self.pending[seg.index]
         first = frames if flags["hold"] or flags["first_only"] else (
-            pre if flags["refined"] else (None if flags["face_refined"] else frames))
+            pre if flags["refined"] or flags["face_refined"] else frames)
         final = None if flags["hold"] or flags["first_only"] else frames
         entry = {"index": seg.index, "segment": seg.timeline_index + 1,
                  "first_pass_seed": str(resolve_segment_seed(seg, self.plan)), "first": None, "final": None}
@@ -111,6 +111,8 @@ class RollingRun:
             notes.extend(self.store.commit(self))
         self.status = "completed"
         self.write_manifest()
+        from .video_delivery import rolling_video_results
+        self.plan._rolling_video_results = rolling_video_results(self)
         return [f"滚动生成：当前段＋上一段；已输出 {len(entries)} 个选中段。目录：{self.root}",
                 "交接、裁剪、接缝完成后才写入持续编码器；不保存逐段 MP4/中间精修视频/完整 RGB 缓存。",
                 "IMAGE/AUDIO 已阻断；一采 AV 缓存保留，支持独立 seed 与仅二采。",

@@ -1,0 +1,48 @@
+CineStack 0.6.7 — File-backed rolling video delivery
+
+Implementation
+- Append first_pass_video/final_video VIDEO outputs at slots 8/9. Preserve original
+  eight slot names, positions, list flags, widget positions and saved connections.
+- Wrap finished files in official InputImpl.VideoFromFile; no read_bytes, BytesIO,
+  get_components or full RGB concatenation in delivery. Normal mode keeps original
+  media outputs and blocks the two optional file ports.
+- Return lightweight executed UI metadata. Add native lazy preview, browser-native
+  download and server path. Clear player sources on close/replacement/disposal;
+  history/cached onExecuted restores metadata without writing workflow parameters.
+- Full timeline scope never falls back to selected-only comparison. When all first
+  ranges are valid, partial final/refine runs compose the full first-pass comparison
+  on disk too. Missing first records are explicitly unavailable, without resampling.
+- Keep old-host fallback usable through downloads/previews with a VIDEO API notice.
+
+Validation
+- Full local Python run: 174 tests in 39.079 seconds; 172 passed, 2 skipped for
+  absent system FFmpeg. Bundled FFmpeg exercises rolling/delivery integration.
+- Python suite and ten dedicated delivery tests cover real FFmpeg output files,
+  first-only/final stages, strict partial second pass, complete/selected scopes,
+  missing first comparison, true first-pass preservation for face-only refinement,
+  missing/external paths, normal outputs, old host fallback,
+  appended port schema and the actual Director.execute/finalize return boundary.
+- Existing seed, strict cache refusal, bidirectional junction, rolling memory,
+  host/pinned lifecycle and old-workflow regressions remain in the full suite.
+- 152 real browser checks: 42 seed/version/migration, 100 Director/results/actions,
+  10 versioned resource checks. One additional narrow overflow assertion runs in
+  local screenshot QA mode. Separate wide/narrow result screenshots were reviewed.
+- Tests check file locator encoding, no preloaded media/no Blob download path,
+  playback failure recovery, player source release, explicit unavailable/partial
+  states, cross-node event isolation, old-port identity, hook result preservation,
+  cached metadata and English controls.
+- Impeccable detector reports four pre-existing findings in unchanged timeline
+  styles/hidden image markup; no new delivery-surface findings. No unrelated redesign.
+- Release checks cover new runtime files and migrated example versions.
+
+Limits
+- CPU tests run real tensors/cache/FFmpeg but replace model inference and Comfy host
+  adapters. The native VideoFromFile constructor and SaveVideo stream path were
+  reviewed against official ComfyUI v0.40.0 source, not executed in a full GPU host.
+- Browser tests use an actual editor and host fixtures; unavailable media exercises
+  recovery. Real remote streaming/playback and GPU RSS still need server acceptance.
+- SaveVideo auto can remux compatible streams without RGB extraction. Other nodes
+  that explicitly extract VIDEO components may allocate a full clip; their behavior
+  is not changed by this plugin.
+- Registry remains manual-only and is not invoked. See the commit's GitHub CI for
+  final Linux results, including system FFmpeg tests unavailable on this Mac.

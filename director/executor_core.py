@@ -1697,8 +1697,10 @@ def _execute_director_plan_core(
             reports.append(
                 f"Segment {ui_idx + 1}/{timeline_seg_total}: {face_note} ({face_s:.1f}s)"
             )
-            if not run_refine:
+            if not run_refine and not rolling:
                 pre_chunk = chunk
+            # Rolling file delivery preserves the actual first pass even when
+            # face refinement is the only final-stage operation.
             _mem("face_refine_after", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
         _mem("seam_before", seg.timeline_index + 1, {"exports": (chunk, pre_chunk, pre_face_chunk)})
         if low_memory and continuity_active and prev_idx in resampled_this_run:
@@ -2210,6 +2212,8 @@ def execute_director_plan_core(plan, **kwargs):
     """Always close persistent rolling encoders, including on host interruption."""
     from .memory_diagnostics import SAMPLING_PLAN
     token = SAMPLING_PLAN.set(plan)
+    if hasattr(plan, "_rolling_video_results"):
+        del plan._rolling_video_results
     try:
         return _execute_director_plan_core(plan, **kwargs)
     except BaseException:

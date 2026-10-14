@@ -1,6 +1,6 @@
 [project]
 name = "cinestack-h3"
-version = "0.6.6"
+version = "0.6.7"
 description = "CineStack H3: local cinematic workflows with fixed per-segment seeds and strict cached second-pass refinement."
 license = {file = "LICENSE"}
 requires-python = ">=3.10"

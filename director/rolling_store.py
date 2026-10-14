@@ -177,6 +177,45 @@ class RollingStore:
                                "merged": {self.stage: {"path": str(dest), "complete": True}}}
             notes += [f"全部导出：新生成 {len(self.selected)} 段，复用 {len(rows) - len(self.selected)} 段，共 {cursor} 帧 → {dest}",
                       "未选段复用保存画面；不会重新采样或重算其接缝。替换段可能需要人工检查前后接点。"]
+            # A final-stage full export may also expose its full first-pass comparison.
+            # Never substitute a selected-only clip for a whole-timeline port.
+            if self.stage == "final":
+                first_clips = []
+                missing = []
+                for seg in self.plan.segments:
+                    clip = entries.get(str(seg.index), {}).get("first")
+                    try:
+                        if not clip or _stamp(clip["path"]) != clip["stamp"]:
+                            raise ValueError("缺少或已变更")
+                        for key in ("start_frame", "frames", "width", "height"):
+                            if type(clip[key]) is not int or clip[key] < (0 if key == "start_frame" else 1):
+                                raise ValueError("范围无效")
+                    except (OSError, KeyError, TypeError, ValueError):
+                        missing.append(str(seg.timeline_index + 1))
+                    else:
+                        first_clips.append(clip)
+                if missing:
+                    reason = "一采全片缺少有效视频记录：第 " + "、".join(missing) + " 段；未重新生成这些段。"
+                    run.full_export["unavailable"] = {"first": reason}
+                    notes.append(reason)
+                else:
+                    first_dest = run.root / "timeline_first_pass.mp4"
+                    if len(self.selected) == len(self.plan.segments) and "first" in run.merged:
+                        import shutil
+                        try:
+                            os.link(run.merged["first"]["path"], first_dest)
+                        except OSError:
+                            shutil.copy2(run.merged["first"]["path"], first_dest)
+                    else:
+                        compose_ranges(first_clips, first_dest, float(self.plan.frame_rate))
+                    position = 0
+                    for row, clip in zip(rows, first_clips):
+                        row["first"] = {"start_frame": position, "frames": clip["frames"],
+                                        "width": max(c["width"] for c in first_clips),
+                                        "height": max(c["height"] for c in first_clips)}
+                        position += clip["frames"]
+                    run.full_export["merged"]["first"] = {"path": str(first_dest), "complete": True}
+                    notes.append(f"一采完整对比视频（复用已保存结果）：{first_dest}")
             if any(entries[str(seg.index)].get("identity_origin") == "user_selected_legacy_manifest" for seg in self.plan.segments):
                 notes.append("旧 manifest 由用户显式指定；旧版缺少完整参数身份，请确认段序与素材版本。")
         staging = self.path.with_suffix(".tmp")

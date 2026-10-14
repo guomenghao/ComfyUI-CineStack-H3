@@ -249,7 +249,7 @@ class CineStackH3Director:
             resolve_segment_cache_key(cache_name, unique_id)
         )
 
-    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "IMAGE", "STRING", "IMAGE", "IMAGE")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "IMAGE", "STRING", "IMAGE", "IMAGE", "VIDEO", "VIDEO")
     RETURN_NAMES = (
         "images",
         "audio",
@@ -259,8 +259,10 @@ class CineStackH3Director:
         "report",
         "images_pre_refine",
         "images_pre_face_refine",
+        "first_pass_video",
+        "final_video",
     )
-    OUTPUT_IS_LIST = (True, True, False, False, True, False, True, True)
+    OUTPUT_IS_LIST = (True, True, False, False, True, False, True, True, False, False)
     FUNCTION = "execute"
     CATEGORY = _CATEGORY
     DESCRIPTION = (
@@ -364,7 +366,7 @@ class CineStackH3Director:
                 )
             )
 
-            return finalize_director_outputs(
+            outputs = finalize_director_outputs(
                 plan,
                 combined,
                 segment_outputs,
@@ -379,6 +381,8 @@ class CineStackH3Director:
                 export_pre_face_refine=export_pre_face_refine,
                 block_final_images=held_for_confirmation,
             )
+            from ..director.video_delivery import finalize_video_delivery
+            return finalize_video_delivery(plan, outputs)
         finally:
             # Full source/reference PCM is execution-scoped.
             cache = getattr(plan, "audio_decode_cache", None)

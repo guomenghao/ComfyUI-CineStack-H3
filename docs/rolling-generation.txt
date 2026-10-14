@@ -37,6 +37,8 @@ face_pre.mp4：选择“输出修脸前”且存在对应阶段时的结果。
 某阶段仅覆盖部分段时命名为 *.partial.mp4，manifest 的 complete=false，并记录实际覆盖段和帧区间；不把未二采的段伪装为二采。
 manifest.json 的 mode=rolling、status=completed 才表示本轮已完整结束。精确 seed 以十进制字符串保存。
 IMAGE/AUDIO/source_images 等完整媒体接口阻断；fps、frame_count、report 仍输出。
+0.6.7 在原 8 口后追加 first_pass_video / final_video（文件 VIDEO），可直接连接官方 SaveVideo。
+导演台内提供按需预览、下载和服务器路径；详情见 rolling-video-delivery.txt。
 视频分批写入编码器不意味着每段都会产生可直接预览的独立 MP4；最终 MP4 在结束封装后生成。
 
 缓存与仅二采

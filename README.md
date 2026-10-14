@@ -2,7 +2,15 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.6** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.7** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 滚动视频保存与预览（0.6.7）
+
+滚动生成完成后，在导演台 **分段工作台 → 滚动视频 · 最近完成结果** 分别查看一采和最终视频，点击 **预览视频** 或 **下载到本机**；展开 **服务器保存位置** 可查看已有文件位置。
+
+需要使用保存视频节点时，直接连接导演台新增的 **一采视频 · 文件（first_pass_video）** / **最终视频 · 文件（final_video）** 到官方 **SaveVideo** 的 VIDEO 输入。两路分别连接两个 SaveVideo，并设置不同文件名前缀；格式与编码选择 `auto`。不经过 CreateVideo，也不要使用需要 IMAGE 输入的 Video Combine。这是对已保存 MP4 的文件传递，兼容流时只重新封装，不把整片帧加载成张量。
+
+全部导出提供完整时间轴；分段导出只提供本轮选中段。仅一采的最终入口明确显示未生成。局部二采可复用各段已有一采视频合成完整对比片，若一采文件不足会列出缺失段，保留最终片并阻断一采 VIDEO 口，不偷偷生成或用部分视频冒充全片。原 8 个输出位置不变；普通模式继续使用旧 IMAGE/AUDIO 接线。详见 [接线与验证](docs/rolling-video-delivery.txt)。
 
 ## 采样阶段 Host/pinned 缓冲区修复（0.6.6）
 
@@ -156,7 +164,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.6` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.7` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

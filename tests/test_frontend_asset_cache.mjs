@@ -44,7 +44,7 @@ try{
     const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name);};
     const urls=await (await fetch('/extensions')).json();
     await Promise.all(urls.map(url=>import(url)));
-    check(urls.length===17,'all 17 production modules discovered through versioned paths');
+    check(urls.length===18,'all 18 production modules discovered through versioned paths');
     const names=globalThis.extensions.map(x=>x.name);
     check(new Set(names).size===names.length,'each extension registers exactly once');
     const migration=globalThis.extensions.find(x=>x.name==='CineStack.H3.WorkflowMigration');

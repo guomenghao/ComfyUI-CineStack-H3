@@ -258,12 +258,61 @@ try {
   await page.evaluate(()=>document.querySelector('main').style.width='540px');
   check(await page.locator('.cstk-overview').evaluate(el=>el.scrollWidth<=el.clientWidth+1),'narrow Comfy node fits even inside a wide browser viewport');
   await page.evaluate(()=>document.querySelector('main').style.width='100%');
+  const deliveryChecks=await page.evaluate(async()=>{
+    const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
+    const {api}=await import('/scripts/api.js');
+    const {ensureVideoOutputs}=await import('/web/js/cinestack_video_results.js');
+    const original=Array.from({length:8},(_,i)=>({name:`old_${i}`,links:[100+i]}));
+    const node={outputs:[...original],addOutput(name,type){this.outputs.push({name,type,links:null})}};
+    ensureVideoOutputs(node);ensureVideoOutputs(node);
+    check(node.outputs.length===10&&original.every((x,i)=>node.outputs[i]===x),'video ports append idempotently without changing any old slot or link');
+    check(node.outputs[8].name==='first_pass_video'&&node.outputs[9].type==='VIDEO','new ports match backend ordering and VIDEO type');
+    const rows=[{stage:'first',scope:'timeline',available:true,complete:true,filename:'timeline_first_pass.mp4',subfolder:'minimax_seg_export/测试 空格',type:'output',path:'/root/ComfyUI/output/minimax_seg_export/测试 空格/timeline_first_pass.mp4'},
+      {stage:'final',scope:'timeline',available:false,complete:false,reason:'本轮尚未生成最终视频。'}];
+    const emit=(node,output)=>api.dispatchEvent(new CustomEvent('executed',{detail:{node,output}}));
+    emit(999,{cinestack_videos:rows});
+    check(!editor.overview.videoResults.root.querySelector('.cs-video-row'),'other node execution cannot overwrite this Director results');
+    emit(56,{cinestack_videos:rows});
+    const root=editor.overview.videoResults.root;
+    check(root.querySelectorAll('.cs-video-row').length===2,'executed metadata shows separate first and final results');
+    check(root.querySelector('[data-stage=final]').textContent.includes('尚未生成')&&!root.querySelector('[data-stage=final] a'),'unproduced final has an explicit reason and no save or preview link');
+    const player=root.querySelector('video');
+    check(player.preload==='none'&&!player.hasAttribute('src'),'preview does not preload or fetch video bytes');
+    const link=root.querySelector('a'); const url=new URL(link.href);
+    check(link.download==='timeline_first_pass.mp4'&&url.searchParams.get('subfolder')==='minimax_seg_export/测试 空格','native download preserves encoded output locator and filename');
+    check(!link.href.startsWith('blob:'),'download uses server file URL without a full-video Blob');
+    const button=root.querySelector('button');button.click();
+    check(!player.hidden&&player.src===link.href&&button.getAttribute('aria-expanded')==='true','preview button opens the file-backed native player');
+    player.dispatchEvent(new Event('error'));
+    check(root.querySelector('[role=status]').textContent.includes('无法播放'),'playback failure explains server file and download recovery');
+    button.click();
+    check(player.hidden&&!player.hasAttribute('src'),'closing preview removes media source and releases player buffering');
+    emit(56,{cinestack_videos:[{...rows[0],scope:'selected',complete:false},rows[1]]});
+    check(root.textContent.includes('本轮选中段')&&root.textContent.includes('仅部分段'),'selected and incomplete stages cannot look like full timeline output');
+    emit(56,{cinestack_videos:[{...rows[0],filename:'../secret.mp4'},rows[1]]});
+    check(!root.querySelector('a'),'unsafe locator is never turned into a download link');
+    emit(56,{cinestack_videos:[]});
+    check(!root.querySelector('video'),'normal mode result clears stale rolling preview');
+    emit(56,{cinestack_videos:rows});
+    check(editor.node._cinestackVideoResults===rows,'completed UI metadata survives editor remount without entering workflow settings');
+    const extension=globalThis.extensions.find(item=>item.name==='ComfyUI.CineStackH3DirectorPlugin');
+    class DirectorFixture { onExecuted(){return 'host-result';} }
+    DirectorFixture.comfyClass='CineStackH3Director';
+    await extension.beforeRegisterNodeDef(DirectorFixture,{name:'CineStackH3Director',input:{required:{}}});
+    const restored=new DirectorFixture();
+    check(restored.onExecuted({cinestack_videos:rows})==='host-result'&&restored._cinestackVideoResults===rows,'history/cached onExecuted restores file metadata and preserves host callback result');
+    restored.onExecuted({unrelated:[]});
+    check(restored._cinestackVideoResults===rows,'unrelated execution payload does not erase completed video metadata');
+    return checks;
+  });checks.push(...deliveryChecks);
   if(process.env.QA_DIR){
     await fs.mkdir(process.env.QA_DIR,{recursive:true});
     await page.evaluate(async()=>{await editor.overview.checkCache();editor.overview.list.scrollTop=0});
     await page.locator('.cstk-overview').screenshot({path:path.join(process.env.QA_DIR,'director-desktop.png')});
+    await page.locator('.cs-videos').screenshot({path:path.join(process.env.QA_DIR,'videos-desktop.png')});
     await page.setViewportSize({width:600,height:1100});
     await page.locator('.cstk-overview').screenshot({path:path.join(process.env.QA_DIR,'director-narrow.png')});
+    await page.locator('.cs-videos').screenshot({path:path.join(process.env.QA_DIR,'videos-narrow.png')});
     check(await page.evaluate(()=>{const el=editor.overview.root;return el.scrollWidth<=el.clientWidth+2}),'workbench has no narrow-panel horizontal overflow');
   }
   check(errors.length===0,`browser errors: ${errors.join(', ')}`);
@@ -271,6 +320,7 @@ try {
     const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
     const {setLocale}=await import('/web/js/minimax_i18n.js');
     setLocale('en');check(editor.overview.root.textContent.includes('Segment workbench'),'overview follows English locale');
+    check(editor.overview.videoResults.root.textContent.includes('Download file'),'video preview and download actions follow English locale');
     check(editor.root.textContent.includes('Low RAM'),'disk-mode label follows English locale');
     check(editor.root.textContent.includes('Rolling generation'),'rolling label follows English locale');setLocale('zh');
     const raw={version:5,timelineMode:'fl2v',editMode:'segment',frameRate:24,global:{taskType:'fl2v'},

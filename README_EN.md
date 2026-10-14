@@ -6,6 +6,12 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Rolling video delivery (0.6.7)
+
+The Director workbench now shows separate first-pass/final file previews, downloads and server locations. Two appended VIDEO outputs (`first_pass_video`, `final_video`) connect directly to official SaveVideo; use different filename prefixes and format/codec `auto` to preserve compatible streams. No CreateVideo or IMAGE-based Video Combine is needed. The original eight output indices stay unchanged.
+
+All export delivers the full timeline, while Segment export delivers only selected segments. An unproduced stage is explicitly unavailable. Partial refinement can compose the full first-pass comparison from saved ranges; missing first-pass files block only that comparison, never trigger first-pass generation or masquerade selected-only video as a complete film. See [delivery scope and checks](docs/rolling-video-delivery.txt).
+
 ## Sampling host/pinned buffer lifecycle (0.6.6)
 
 Run ComfyUI's prefetch-then-cast cleanup after every internal sampling pass, including failures, before dropping model patchers or optional unloading. Dynamic patch HostBuffers are released while base-weight pin caches and unload policy remain intact. First/refine/SelfLift calls share this path. Older hosts feature-detect the APIs.
@@ -95,7 +101,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.6 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.7 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

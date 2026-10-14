@@ -1,0 +1,48 @@
+影栈 0.6.7 — 滚动视频保存与预览
+
+使用
+1. git pull 后重启 ComfyUI 并刷新浏览器。旧工作流无需重建：原 8 个输出和接线保留，
+   右侧末尾追加 first_pass_video（一采视频 · 文件）和 final_video（最终视频 · 文件）。
+2. 按原设置选择全部/分段导出、滚动生成和本轮采样阶段。
+3. 完成后展开“分段工作台 → 滚动视频 · 最近完成结果”：一采、最终分别显示范围，
+   可以预览、下载到浏览器所在电脑，并展开服务器保存位置。
+4. 需要原来的 SaveVideo 保存体验时，将新增 VIDEO 输出直接连接官方 SaveVideo 的
+   video 输入。一采和最终各接一个，前缀例如 CineStack/first_pass、CineStack/final。
+   SaveVideo 的 format/codec 选择 auto（兼容 H.264 的自动模式也可）；不要经过
+   CreateVideo，不要接要求 IMAGE 的 VHS Video Combine。
+5. 文件在滚动编码完成时已保存；SaveVideo 是另存一份，并非唯一保存入口。
+   未生成的阶段会阻断对应新口，让下游跳过；不会用另一个阶段冒充它。
+
+范围与文件
+- 全部导出＋仅一采：timeline_first_pass.mp4；最终入口明确“尚未生成”。
+- 全部导出＋最终阶段：timeline_final.mp4，并在各段一采文件有效时提供
+  timeline_first_pass.mp4 对比。局部二采只采选中段，其他段复用已保存视频范围。
+- 全部导出的非当前阶段来源不足：明确列出缺少的一采段，不提供冒充整片的部分结果，
+  不重新采样；最终视频仍输出。需要补足时由用户明确决定处理哪些段。
+- 分段导出＋滚动：first_pass.mp4 / final.mp4 仅含本轮选中段；若只有部分段具备某阶段，
+  文件名保留 .partial，UI 标注“仅部分段有此阶段”。
+- 只做修脸而未启用二采时，滚动模式仍保留修脸前的一采对比，最终视频为修脸后的结果。
+- 普通非滚动模式：原 IMAGE/AUDIO 路径不变，新增 VIDEO 口阻断，不额外编码或落盘。
+- 老版本已完成任务没有新的 UI 结果元数据；已有文件仍在原 report 路径，不会为填面板自动重跑。
+
+内存与保存
+- 输出对象为 ComfyUI 官方 InputImpl.VideoFromFile；构造时只保存路径，不读取文件内容。
+- UI 使用 ComfyUI /view 的输出文件定位符；按下预览才设置 video.src，preload=none，
+  收起/替换/移除播放器会 pause、移除 src、load。下载用浏览器原生链接，不 fetch→Blob。
+- SaveVideo 在格式/编码 auto 且流兼容时逐包重新封装；get_dimensions 只读媒体头。
+  插件不调用 get_components，不拼接全片 IMAGE，不把 MP4 读成 BytesIO。
+- 如果用户把 VIDEO 接到要求提取全片帧的其他节点，那个下游节点仍可能分配全片内存。
+- 对缺少官方文件 VIDEO API 的旧宿主，保留下载/预览并说明更新宿主；不会偷偷退回全帧解码。
+- 预览失败会提示检查服务器文件或尝试下载；不自动重新生成。界面标记“最近完成结果”，
+  避免上次成功任务的视频被误认为当前失败/未完成任务的结果。
+
+验证与边界
+- 新增 CPU/FFmpeg 集成测试覆盖完整/选中输出、一采与最终区分、局部仅二采、
+  缺失的一采对比、外部/丢失路径、原 8 口位置和旧宿主兼容。
+- 浏览器检查实际导演台结果、按需预览、错误提示、下载 URL、播放器释放、
+  输出追加幂等、无接线移位、语言切换及窄节点布局。
+- 已对照官方 v0.40.0 VideoFromFile 构造/get_dimensions/save_to 和 SaveVideo 源码：
+  https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy_api/latest/_input_impl/video_types.py
+  https://github.com/Comfy-Org/ComfyUI/blob/v0.40.0/comfy_extras/nodes_video.py
+- 本地使用 ComfyUI 适配测试桩；没有将其视为远端真实 GPU/宿主 SaveVideo 端到端验证。
+- 保留 0.6.6 的 Host/pinned 清理和内存诊断；本次没有发布 Comfy Registry。

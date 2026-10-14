@@ -1,3 +1,4 @@
+import { ensureVideoOutputs } from "./cinestack_video_results.js";
 // Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 import { app } from "../../scripts/app.js";
 import { createSegmentSeedControl } from "./minimax_segment_seed.js";
@@ -13397,6 +13398,7 @@ function migrateDirectorOutputLinks(node) {
 function normalizeDirectorOutputs(node) {
     stripDeprecatedDirectorOutputs(node);
     migrateDirectorOutputLinks(node);
+    ensureVideoOutputs(node);
 }
 
 app.registerExtension({
@@ -13568,6 +13570,15 @@ app.registerExtension({
         if (nodeType.prototype._cineStackDirectorPatched) return;
         nodeType.prototype._cineStackDirectorPatched = true;
 
+        const onExecuted = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (message, ...args) {
+            const result = onExecuted?.call(this, message, ...args);
+            if (Array.isArray(message?.cinestack_videos)) {
+                this._cinestackVideoResults = message.cinestack_videos;
+                this._cineStackEditor?.overview?.videoResults?.set(message.cinestack_videos);
+            }
+            return result;
+        };
         const onCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onCreated?.apply(this, arguments);
@@ -13688,7 +13699,7 @@ app.registerExtension({
             if (saved) this._mmxSavedConfigureData = saved;
             this._mmxPendingConfigureRestore = true;
             const out = onConfigure?.apply(this, args);
-            const runRestore = () => applyDirectorConfigureRestore(this, this._mmxSavedConfigureData);
+            const runRestore = () => { applyDirectorConfigureRestore(this, this._mmxSavedConfigureData); normalizeDirectorOutputs(this); };
             queueMicrotask(runRestore);
             setTimeout(runRestore, 0);
             setTimeout(() => {

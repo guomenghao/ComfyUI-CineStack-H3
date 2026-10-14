@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.7 — 2026-10-15
+
+- Append separate file-backed first/final VIDEO outputs after the original eight ports. Return structured completed-file UI metadata and show lazy native preview, direct download and server location in the Director workbench. Preserve old links and ordinary IMAGE/AUDIO behavior; feature-detect older host video APIs.
+- Full rolling exports expose full-timeline files; selected exports expose only executed ranges. Partial final/refine runs additionally compose a full first-pass comparison from validated saved ranges when available. Missing comparison sources are explicit and never regenerate or substitute partial footage. Preserve the actual pre-face first pass when face refinement is the only final operation.
+- Add disk-delivery and real-browser regressions for scopes, strict refinement, missing stages/files, port compatibility, lazy media lifecycle, downloads and unsafe locators. No full-frame rehydration and no Registry publication.
+
 ## 0.6.6 — 2026-10-15
 
 - Apply ComfyUI prefetch/cast buffer cleanup after each internal sampling pass, including exceptions, while patchers remain reachable. Release dynamic patch host buffers before optional model unloading; preserve base-weight pins and older-host fallback. Cover first/refine/SelfLift through their common sampler.

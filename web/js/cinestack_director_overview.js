@@ -1,3 +1,4 @@
+import { VideoResults, VIDEO_RESULT_STYLES } from "./cinestack_video_results.js";
 /** Director workbench: derived UI only; workflow values stay in timeline_data. */
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
@@ -31,8 +32,8 @@ const COPY = {
         blocked: "选中段缓存未匹配，请查看对应段差异，或改为仅一采重做该段。", skipped: "Refine 设置跳过了选中段，请检查 skip_fl2v。",
         pinUnsafe: "全局 seed 超出浏览器精确整数范围；请直接输入本段十进制 seed。",
         notConfirmed: "ComfyUI 尚未确认提交，请查看宿主队列或错误提示后再操作。",
-        rolling: "滚动生成：保留当前段＋上一段；连续编码，无逐段/中间轮次视频；IMAGE/AUDIO 不输出，文件路径见报告。",
-        rollingAll: "全部导出＋滚动：只生成选中段，复用其他段已有视频合成整片；缺失或失配会停止，不补跑。IMAGE/AUDIO 不输出，文件路径见报告。",
+        rolling: "滚动生成：保留当前段＋上一段；连续编码，无逐段/中间轮次视频；IMAGE/AUDIO 不输出；在“滚动视频”预览、下载，或使用新增 VIDEO 口。",
+        rollingAll: "全部导出＋滚动：只生成选中段，复用其他段已有视频合成整片；缺失或失配会停止，不补跑。IMAGE/AUDIO 不输出；在“滚动视频”预览、下载，或使用新增 VIDEO 口。",
         lowMemory: "低内存落盘：只保存本轮勾选段，文件路径见报告；IMAGE/AUDIO 不输出完整视频。",
     },
     en: {
@@ -59,7 +60,7 @@ const COPY = {
         blocked: "Selected caches do not match. Inspect segment differences or regenerate with First pass only.", skipped: "Refine skips a selected segment; check skip_fl2v.",
         pinUnsafe: "Global seed exceeds browser integer precision. Enter an exact decimal seed for this segment.",
         notConfirmed: "ComfyUI did not confirm submission. Check its queue or error message before retrying.",
-        rolling: "Rolling: current + previous; continuous encoding without per-segment/intermediate videos. IMAGE/AUDIO blocked; see report paths.",
+        rolling: "Rolling: current + previous; continuous encoding without per-segment/intermediate videos. IMAGE/AUDIO blocked; preview/download under Rolling videos or connect the VIDEO ports.",
         rollingAll: "All + rolling: generate checked segments, reuse saved videos for the rest and export the full timeline. Missing/mismatched results stop the run; never resample unchecked segments. File output only.",
         lowMemory: "Low RAM: save checked segments only. See file paths in the report; IMAGE/AUDIO sockets do not emit full clips.",
     },
@@ -82,7 +83,7 @@ export function effectiveSegmentSeed(row, node) {
 
 export const connectedOverviewRefine = connectedRefineForDirector;
 
-export const OVERVIEW_STYLES = `
+export const OVERVIEW_STYLES = VIDEO_RESULT_STYLES + `
 .cstk-overview{--cs-bg:#171c1b;--cs-surface:#202724;--cs-border:#45534b;--cs-text:#e8eeea;--cs-muted:#b2bfb6;--cs-accent:#8ce0b2;--cs-warn:#f1c77c;--cs-error:#ffa5a5;color:var(--cs-text);background:var(--cs-bg);border:1px solid var(--cs-border);border-radius:12px;flex:0 0 auto;font:13px/1.5 ui-sans-serif,system-ui,sans-serif;min-width:0;overflow:hidden}
 .cstk-overview *{box-sizing:border-box}.cstk-overview summary{padding:10px 12px;cursor:pointer;display:flex;gap:12px;align-items:center;list-style:none}.cstk-overview summary::-webkit-details-marker{display:none}.cstk-overview .cs-chevron{width:16px;height:16px;transition:transform .18s ease;flex:none}.cstk-overview[open]>.cs-head .cs-chevron{transform:rotate(90deg)}
 .cstk-overview .cs-head b{font-size:14px}.cstk-overview .cs-count{color:var(--cs-muted);margin-left:auto;font-variant-numeric:tabular-nums}.cstk-overview .cs-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 12px 10px;border-bottom:1px solid var(--cs-border)}
@@ -144,6 +145,7 @@ export class DirectorOverview {
         this.unsub = onLocaleChange(() => { this.update(); });
         this.onExecuted = () => this.invalidate(400);
         api.addEventListener?.("executed", this.onExecuted);
+        this.videoResults = new VideoResults(editor, this.root);
         this.update(); this.invalidate(250);
     }
 
@@ -430,7 +432,7 @@ export class DirectorOverview {
         finally { this.busy = false; this.queue.textContent = label("queue"); this.updateAction(); }
     }
 
-    dispose() { this.disposed = true; this.seq++; clearTimeout(this.timer); this.unsub?.(); api.removeEventListener?.("executed", this.onExecuted); this.root.remove(); }
+    dispose() { this.videoResults?.dispose(); this.disposed = true; this.seq++; clearTimeout(this.timer); this.unsub?.(); api.removeEventListener?.("executed", this.onExecuted); this.root.remove(); }
 }
 
 export function mountDirectorOverview(editor) { return new DirectorOverview(editor); }
