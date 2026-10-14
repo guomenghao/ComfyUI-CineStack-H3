@@ -570,7 +570,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3DirectorGroupsCombine",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": []
@@ -786,7 +786,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3DirectorGroupReferenceToVideo",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": [
@@ -889,7 +889,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3DirectorGroupReferenceToVideo",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": [
@@ -1174,7 +1174,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3DirectorGroupReferenceToVideo",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": [
@@ -1437,7 +1437,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3DirectorGroupReferenceToVideo",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": [
@@ -1743,7 +1743,7 @@
       "properties": {
         "Node name for S&R": "CineStackH3Director",
         "cnr_id": "cinestack-h3",
-        "ver": "0.6.2",
+        "ver": "0.6.3",
         "aux_id": "guomenghao/ComfyUI-CineStack-H3"
       },
       "widgets_values": [

@@ -27,6 +27,16 @@ class RollingFullExportTests(unittest.TestCase):
         plan.run_indices = None if selected is None else frozenset(selected)
         return plan
 
+    def test_ambiguous_legacy_stage_has_actionable_error_before_sampling(self):
+        plan = self.build(mode="legacy")
+        plan.refine.update(enabled=True, confirm_first_pass=True, refine_only=False)
+        first, second = [], []
+        with self.assertRaisesRegex(ValueError, "分段工作台 → 执行方式") as error:
+            self.execute(plan, first, second)
+        self.assertIn("无需关闭滚动生成", str(error.exception))
+        self.assertEqual((first, second), ([], []))
+        self.assertFalse(self.index().exists())
+
     def paint(self, values):
         values = iter(values)
         return lambda *a, **kw: (f.torch.full((5, 32, 32, 3), next(values)), None)

@@ -48,7 +48,7 @@ class RollingStore:
         if self.full:
             pack = plan.refine or {}
             if director_execution_mode(plan) == "legacy" and pack.get("enabled") and pack.get("confirm_first_pass"):
-                raise ValueError("滚动全部导出：先确认一采模式请明确选择“仅一采”或“仅二采”，避免混合交付阶段。")
+                raise ValueError("尚未开始采样：滚动生成＋全部导出需要统一输出阶段。\n请在导演台时间轴上方的“分段工作台 → 执行方式”点击“仅一采”（生成并保存一采），或“仅二采”（使用匹配的一采缓存）。\n当前“跟随工作流”启用了“先确认一采”，可能混用两个阶段。没有一采缓存时，请先选择“仅一采”；无需关闭滚动生成。")
             self._validate_unselected()
 
     def _import_manifest(self, path):

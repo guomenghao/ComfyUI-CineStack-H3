@@ -8,15 +8,20 @@ import { cacheStatusPayload, diffLabel, connectedRefineForDirector } from "./min
 
 const COPY = {
     zh: {
+        conflict: "尚未提交：滚动生成＋全部导出需要统一输出阶段。当前工作流按缓存自动选择一采或二采，请先选择本轮阶段。",
+        chooseFirst: "改为仅一采", chooseSecond: "改为仅二采", inspect: "查看问题段", retry: "重新检查缓存",
+        actionNote: "这里只修改设置，不会自动开始生成；确认后点击“检查并运行”或顶部“运行”。",
+        runSummary: "本轮：{n} 段 · {memory} · {export}", rollingName: "滚动生成", diskName: "低内存落盘", normalName: "常规生成",
+        allExport: "全部导出", segmentExport: "分段导出", blockedTitle: "请先处理导演台设置",
         title: "分段工作台", count: "段", scope: "运行范围", all: "全部", selected: "勾选段", edit: "编辑",
-        stage: "执行方式", legacy: "按原接线", first_pass: "仅一采", refine_only: "仅二采",
-        refresh: "检查缓存", queue: "加入 ComfyUI 队列", queued: "已提交队列", submitting: "正在提交…",
+        stage: "执行方式", legacy: "跟随工作流", first_pass: "仅一采", refine_only: "仅二采",
+        refresh: "检查缓存", queue: "检查并运行", queued: "已提交队列", submitting: "正在提交…",
         seed: "一采 seed", inherit: "留空继承全局", fixed: "本段固定", global: "继承全局", pin: "固定当前值",
         unknown: "待检查", checking: "正在检查…", matched: "一采元数据匹配", missing: "缺少一采缓存",
         mismatch: "一采失配", damaged: "缓存异常", final: "成片缓存存在", noFinal: "暂无成片缓存",
         changed: "参数已变，请重新检查", failed: "缓存检查失败", empty: "添加片段后可在这里统一管理 seed 和缓存。",
         details: "查看差异", previous: "缓存", current: "当前", segment: "片段", linked: "seed 由外部接线控制",
-        legacyHint: "沿用工作流中的 Refine / 脸修设置。", firstHint: "重新生成勾选段一采并保存缓存，跳过二采和脸修。",
+        legacyHint: "沿用工作流中的 Refine / 脸修设置。", firstHint: "生成选中段的一采并保存缓存，跳过二采和脸修；全部导出时合并一采视频。",
         refineHint: "只读取匹配的一采缓存；运行前还会校验 latent，失配绝不补跑一采。",
         noRefine: "请连接并启用影栈 Refine（refine / upscale），并连接二采 SIGMAS。",
         noSelection: "请至少勾选一段。", noQueue: "请使用 ComfyUI 的队列按钮提交。",
@@ -31,9 +36,14 @@ const COPY = {
         lowMemory: "低内存落盘：只保存本轮勾选段，文件路径见报告；IMAGE/AUDIO 不输出完整视频。",
     },
     en: {
+        conflict: "Not submitted: rolling generation with All export needs one output stage. The workflow currently chooses a stage per cache. Select first pass or second pass for this run.",
+        chooseFirst: "Use first pass only", chooseSecond: "Use second pass only", inspect: "Show problem segments", retry: "Recheck cache",
+        actionNote: "These actions change settings only. Review them, then choose Check and run or the main Run button.",
+        runSummary: "This run: {n} segments · {memory} · {export}", rollingName: "Rolling", diskName: "Low RAM", normalName: "Standard",
+        allExport: "All export", segmentExport: "Segment export", blockedTitle: "Review Director settings",
         title: "Segment workbench", count: "segments", scope: "Run scope", all: "All", selected: "Checked", edit: "Edit",
         stage: "Execution", legacy: "Follow graph", first_pass: "First pass only", refine_only: "Second pass only",
-        refresh: "Check cache", queue: "Queue ComfyUI workflow", queued: "Queued", submitting: "Submitting…",
+        refresh: "Check cache", queue: "Check and run", queued: "Queued", submitting: "Submitting…",
         seed: "First-pass seed", inherit: "Inherit global", fixed: "Fixed", global: "Global", pin: "Fix current value",
         unknown: "Not checked", checking: "Checking…", matched: "First-pass metadata match", missing: "First-pass cache missing",
         mismatch: "First-pass mismatch", damaged: "Cache error", final: "Rendered cache exists", noFinal: "No rendered cache",
@@ -79,6 +89,16 @@ export const OVERVIEW_STYLES = `
 .cstk-overview label{display:flex;align-items:center;gap:6px}.cstk-overview select,.cstk-overview input[type=text]{border:1px solid var(--cs-border);border-radius:6px;background:var(--cs-surface);color:var(--cs-text);padding:6px 8px;font:inherit;min-width:0;min-height:34px;caret-color:var(--cs-accent)}
 .cstk-overview button{border:1px solid var(--cs-border);border-radius:6px;background:var(--cs-surface);color:var(--cs-text);padding:6px 10px;min-height:34px;font:inherit;cursor:pointer}.cstk-overview button:hover{background:#303c35}.cstk-overview button:active{background:#394a40}.cstk-overview .cs-queue{background:#254d39;color:#e9fff2;border-color:#75b892;margin-left:auto}.cstk-overview button:disabled{opacity:.5;cursor:not-allowed}
 .cstk-overview :is(button,input,select,summary):focus-visible{outline:2px solid var(--cs-accent);outline-offset:2px}.cstk-overview input[type=checkbox]{accent-color:var(--cs-accent);width:18px;height:18px;cursor:pointer}.cstk-overview ::selection{background:#3c6650;color:#fff}
+.cstk-overview .cs-run-summary{margin:0;padding:0 12px 10px;font-weight:600}
+.cstk-overview .cs-mode{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--cs-surface)}
+.cstk-overview .cs-mode-buttons{display:flex;gap:6px;flex-wrap:wrap}
+.cstk-overview .cs-mode button{min-height:40px;padding:8px 14px;font-weight:600}
+.cstk-overview .cs-mode button[aria-pressed=true]{background:#254d39;border-color:var(--cs-accent);color:#e9fff2;box-shadow:inset 0 -2px var(--cs-accent)}
+.cstk-overview .cs-recovery{padding:10px 12px;background:#332b1d;color:#f1d6a7}
+.cstk-overview .cs-recovery[hidden]{display:none}
+.cstk-overview .cs-recovery p{margin:0 0 8px;white-space:pre-line;overflow-wrap:anywhere}
+.cstk-overview .cs-recovery-actions{display:flex;gap:8px;flex-wrap:wrap}
+.cstk-overview .cs-recovery small{display:block;margin-top:8px}
 .cstk-overview .cs-hint{margin:0;padding:8px 12px;color:var(--cs-muted)}.cstk-overview .cs-message{margin:0;padding:0 12px 10px;color:var(--cs-muted)}.cstk-overview .cs-message[data-tone=error]{color:var(--cs-error)}.cstk-overview .cs-message[data-tone=ok]{color:var(--cs-accent)}
 .cstk-overview .cs-list{max-height:260px;overflow:auto;scrollbar-color:var(--cs-border) var(--cs-bg);scrollbar-width:thin}.cstk-overview .cs-row{display:grid;grid-template-columns:24px 52px minmax(110px,1fr) minmax(175px,220px) minmax(170px,1fr);gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #303a34}.cstk-overview .cs-row:first-child{border-top:0}.cstk-overview .cs-row[data-selected=true]{background:#27362d}.cstk-overview .cs-row[data-running=true]{outline:1px solid var(--cs-accent);outline-offset:-1px}
 .cstk-overview .cs-thumb{width:52px;height:38px;border-radius:4px;object-fit:cover;background:var(--cs-surface)}.cstk-overview .cs-thumb-empty{display:grid;place-items:center;color:var(--cs-muted);font-variant-numeric:tabular-nums}.cstk-overview .cs-title{padding:0;border:0;min-height:28px;background:transparent!important;text-align:left;font-weight:650;display:block;max-width:100%;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.cstk-overview .cs-meta,.cstk-overview .cs-source{color:var(--cs-muted);font-size:12px;font-variant-numeric:tabular-nums}.cstk-overview .cs-seed{display:grid;gap:4px;min-width:0}.cstk-overview .cs-seed>label{display:block!important;font-size:12px!important}.cstk-overview .cs-seed input{width:100%!important;max-width:100%;font-variant-numeric:tabular-nums}.cstk-overview .cs-seed-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cstk-overview .cs-pin{font-size:11px;min-height:24px;padding:2px 5px}.cstk-overview .cs-state{font-size:12px}.cstk-overview .cs-state[data-tone=ok]{color:var(--cs-accent)}.cstk-overview .cs-state[data-tone=warn]{color:var(--cs-warn)}.cstk-overview .cs-state[data-tone=error]{color:var(--cs-error)}
@@ -97,8 +117,9 @@ export class DirectorOverview {
         this.editor = editor; this.node = editor.node; this.rows = new Map(); this.seq = 0;
         this.data = null; this.busy = false; this.disposed = false; this.signature = "";
         this.root = document.createElement("details"); this.root.open = true; this.root.className = "cstk-overview";
-        this.root.innerHTML = `<style>${OVERVIEW_STYLES}</style><summary class="cs-head"><svg class="cs-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><b></b><span class="cs-count"></span></summary><div class="cs-controls"><label class="cs-scope"><span></span><select><option value="all"></option><option value="selected"></option></select></label><label class="cs-mode"><span></span><select><option value="legacy"></option><option value="first_pass"></option><option value="refine_only"></option></select></label><button type="button" class="cs-refresh"></button><button type="button" class="cs-queue"></button></div><p class="cs-hint"></p><div class="cs-list"></div><p class="cs-message" role="status" aria-live="polite"></p>`;
-        this.scope = this.root.querySelector(".cs-scope select"); this.mode = this.root.querySelector(".cs-mode select");
+        this.root.innerHTML = `<style>${OVERVIEW_STYLES}</style><summary class="cs-head"><svg class="cs-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><b></b><span class="cs-count"></span></summary><div class="cs-controls"><label class="cs-scope"><span></span><select><option value="all"></option><option value="selected"></option></select></label><button type="button" class="cs-refresh"></button></div><p class="cs-run-summary"></p><div class="cs-mode"><span></span><div class="cs-mode-buttons" role="group"><button type="button" data-mode="first_pass"></button><button type="button" data-mode="refine_only"></button><button type="button" data-mode="legacy"></button></div><button type="button" class="cs-queue"></button></div><p class="cs-hint"></p><div class="cs-recovery" hidden role="status" aria-live="polite"><p></p><div class="cs-recovery-actions"><button type="button" data-fix="first_pass"></button><button type="button" data-fix="refine_only"></button><button type="button" data-fix="inspect"></button><button type="button" data-fix="retry"></button></div><small></small></div><div class="cs-list"></div><p class="cs-message" role="status" aria-live="polite"></p>`;
+        this.scope = this.root.querySelector(".cs-scope select"); this.modeButtons = [...this.root.querySelectorAll("[data-mode]")];
+        this.recovery = this.root.querySelector(".cs-recovery");
         this.list = this.root.querySelector(".cs-list"); this.message = this.root.querySelector(".cs-message");
         this.queue = this.root.querySelector(".cs-queue"); this.refresh = this.root.querySelector(".cs-refresh");
         const toolbar = editor.root.querySelector(".bd-toolbar-wrap"); toolbar?.after(this.root);
@@ -109,8 +130,11 @@ export class DirectorOverview {
             if (enabled && !editor.timeline.runSelection?.length) editor.timeline.runSelection = overviewRows(editor).map((_, i) => i);
             editor.commit(false, { syncTimeline: true }); this.invalidate(200);
         };
-        this.mode.onchange = () => {
-            editor.timeline.executionMode = this.mode.value; editor.flushTimelineSync(); this.update(); this.invalidate(100);
+        for (const button of this.modeButtons) button.onclick = () => this.setMode(button.dataset.mode);
+        for (const button of this.recovery.querySelectorAll("[data-fix]")) button.onclick = () => {
+            if (button.dataset.fix === "inspect") this.showProblems();
+            else if (button.dataset.fix === "retry") this.checkCache();
+            else this.setMode(button.dataset.fix);
         };
         this.refresh.onclick = () => this.checkCache(); this.queue.onclick = () => this.submit();
         this.root.addEventListener("toggle", () => editor.updateDomWidgetHeight?.());
@@ -152,9 +176,13 @@ export class DirectorOverview {
         this.root.querySelector(".cs-head").title = label("collapse");
         this.root.querySelector(".cs-scope span").textContent = label("scope");
         this.root.querySelector(".cs-mode span").textContent = label("stage");
-        for (const select of [this.scope, this.mode]) for (const option of select.options) option.textContent = label(option.value);
+        for (const option of this.scope.options) option.textContent = label(option.value);
+        this.root.querySelector(".cs-mode-buttons").setAttribute("aria-label", label("stage"));
+        for (const button of this.modeButtons) {
+            button.textContent = label(button.dataset.mode);
+            button.setAttribute("aria-pressed", String(button.dataset.mode === (this.editor.timeline.executionMode || "legacy")));
+        }
         this.scope.value = this.editor.timeline.runSelectEnabled && overviewRows(this.editor).length > 1 ? "selected" : "all";
-        this.mode.value = this.editor.timeline.executionMode || "legacy";
         this.refresh.textContent = this.checking ? label("checking") : label("refresh");
         this.queue.textContent = this.busy ? label("submitting") : label("queue");
         const rows = overviewRows(this.editor), present = new Set();
@@ -284,6 +312,12 @@ export class DirectorOverview {
         const mode = this.editor.timeline.executionMode || "legacy";
         this.root.querySelector(".cs-hint").textContent = label(mode === "legacy" ? "legacyHint" : mode === "first_pass" ? "firstHint" : "refineHint");
         let reason = "", ready = false;
+        const output = this.editor.timeline.output || {};
+        const refineNode = connectedOverviewRefine(this.node);
+        const confirm = widgetValue(refineNode, "confirm_first_pass");
+        this.stageConflict = mode === "legacy" && output.rollingGeneration === true
+            && output.exportMode !== "segments" && Boolean(refineNode)
+            && (confirm === true || confirm === 1 || String(confirm).toLowerCase() === "true");
         const rows = overviewRows(this.editor);
         if (!rows.length || !rows.some((_, i) => this.runEnabled(i))) reason = label("noSelection");
         try { rows.forEach((row) => normalizeSegmentSeed(row.first_pass_seed)); } catch { reason = label("invalidSeed"); }
@@ -294,14 +328,64 @@ export class DirectorOverview {
             else if (!this.data?.can_confirm_refine) reason = this.cacheError || label(!this.data ? "stale" : this.data.confirm_refine_reason === "refine_skipped" ? "skipped" : "blocked");
             else ready = true;
         }
+        if (this.stageConflict && !reason) reason = label("conflict");
         if (typeof app.queuePrompt !== "function") reason = label("noQueue");
+        this.root.querySelector(".cs-run-summary").textContent = label("runSummary")
+            .replace("{n}", rows.filter((_, i) => this.runEnabled(i)).length)
+            .replace("{memory}", label(output.rollingGeneration ? "rollingName" : output.lowMemoryMode ? "diskName" : "normalName"))
+            .replace("{export}", label(output.exportMode === "segments" ? "segmentExport" : "allExport"));
+        this.recovery.hidden = !reason;
+        this.recovery.querySelector("p").textContent = reason;
+        this.recovery.querySelector("small").textContent = label("actionNote");
+        const fixes = {first_pass: "chooseFirst", refine_only: "chooseSecond", inspect: "inspect", retry: "retry"};
+        for (const button of this.recovery.querySelectorAll("[data-fix]")) {
+            const fix = button.dataset.fix;
+            button.textContent = label(fixes[fix]);
+            button.hidden = this.stageConflict ? !["first_pass", "refine_only"].includes(fix)
+                : mode === "refine_only" ? fix === "refine_only" : fix !== "inspect";
+        }
         this.blockReason = reason;
         this.queue.disabled = this.busy || Boolean(reason);
-        this.message.dataset.tone = reason || this.cacheError || this.submitError ? "error" : ready || this.queueNotice ? "ok" : "muted";
-        this.message.textContent = reason || this.submitError || this.cacheError || this.queueNotice || (ready ? label("ready") : label("scopeHint"));
+        this.message.dataset.tone = this.cacheError || this.submitError ? "error" : ready || this.queueNotice ? "ok" : "muted";
+        this.message.textContent = (reason ? "" : this.submitError) || this.cacheError || this.queueNotice || (ready ? label("ready") : label("scopeHint"));
         if (this.editor.timeline.output?.rollingGeneration === true) this.message.textContent += ` ${label(this.editor.timeline.output?.exportMode === "segments" ? "rolling" : "rollingAll")}`;
         else if (this.editor.timeline.output?.lowMemoryMode === true) this.message.textContent += ` ${label("lowMemory")}`;
         this.queue.title = reason || label("scopeHint");
+    }
+
+    setMode(mode) {
+        if (!["legacy", "first_pass", "refine_only"].includes(mode)) return;
+        this.editor.timeline.executionMode = mode;
+        this.editor.flushTimelineSync(); this.invalidate(100); this.update();
+    }
+
+    showProblems() {
+        for (const view of this.rows.values()) if (this.runEnabled(view.index) && !view.diff.hidden) view.diff.open = true;
+        const problem = [...this.rows.values()].find(v => this.runEnabled(v.index) && !v.diff.hidden);
+        (problem?.root || this.list).scrollIntoView({block: "nearest"});
+    }
+
+    revealProblem() {
+        this.root.open = true;
+        app.canvas?.centerOnNode?.(this.node);
+        this.root.scrollIntoView({block: "nearest"});
+        const target = [...this.recovery.querySelectorAll("button")].find(b => !b.hidden);
+        target?.focus({preventScroll: true});
+    }
+
+    async prepareRun() {
+        this.editor.flushTimelineSync(); this.update();
+        const signature = this.settingsSignature();
+        if (this.editor.timeline.executionMode === "refine_only") {
+            const accepted = await this.checkCache();
+            if (!accepted || signature !== this.settingsSignature() || this.disposed) {
+                this.submitError = this.cacheError || label("changed"); this.updateAction();
+                this.revealProblem(); return false;
+            }
+        }
+        this.updateAction();
+        if (this.blockReason) { this.revealProblem(); return false; }
+        return true;
     }
 
     runEnabled(index) { return overviewRows(this.editor).length < 2 || this.editor.isSegmentRunEnabled(index); }
@@ -350,3 +434,73 @@ export class DirectorOverview {
 }
 
 export function mountDirectorOverview(editor) { return new DirectorOverview(editor); }
+
+
+// Remember output definitions so unused Directors do not block unrelated work.
+const outputNodeTypes = new Set();
+export function rememberQueueNodeDefinition(definition) {
+    if (definition?.output_node === true) outputNodeTypes.add(definition.name);
+}
+
+export async function preflightDirectorQueue(args = []) {
+    const graph = app.rootGraph || app.graph || app.canvas?.graph;
+    let candidates = (graph?._nodes || graph?.nodes || [])
+        .filter(node => node.mode == null || node.mode === 0)
+        .map(node => node._cineStackEditor?.overview).filter(view => view && !view.disposed);
+    if (!candidates.length) return true;
+    const signatures = new Map(candidates.map(view => [view, view.settingsSignature()]));
+    if (typeof app.graphToPrompt === "function") {
+        let prompt;
+        try { prompt = await app.graphToPrompt(graph); }
+        catch { return true; } // Let the host display its own serialization error.
+        const output = prompt?.output || {};
+        const options = args[2];
+        const targets = Array.isArray(options) ? options : options?.queueNodeIds;
+        const roots = targets?.length ? targets.map(String)
+            : Object.keys(output).filter(id => outputNodeTypes.has(output[id].class_type));
+        let active = new Set(Object.keys(output));
+        if (roots.length || outputNodeTypes.size) {
+            active = new Set();
+            const visit = id => {
+                if (active.has(id) || !output[id]) return;
+                active.add(id);
+                for (const value of Object.values(output[id].inputs || {})) {
+                    if (Array.isArray(value) && value.length === 2 && typeof value[1] === "number") visit(String(value[0]));
+                }
+            };
+            roots.forEach(visit);
+        }
+        candidates = candidates.filter(view => active.has(String(view.node.id)));
+    }
+    for (const view of candidates) {
+        if (view.settingsSignature() !== signatures.get(view)) {
+            view.submitError = label("changed"); view.updateAction(); view.revealProblem(); return false;
+        }
+        if (!await view.prepareRun()) return false;
+    }
+    // An earlier Director can change while a later one's cache is being checked.
+    for (const view of candidates) {
+        if (view.disposed || graph !== (app.rootGraph || app.graph || app.canvas?.graph)
+            || view.settingsSignature() !== signatures.get(view)) {
+            view.submitError = label("changed"); view.updateAction(); view.revealProblem(); return false;
+        }
+    }
+    return true;
+}
+
+export function installDirectorQueueGuard(flushDirectors, clearRunStatus) {
+    if (!app.queuePrompt || app.queuePrompt._cineStackPatched) return;
+    const original = app.queuePrompt;
+    let checking = false;
+    app.queuePrompt = async function (...args) {
+        if (checking) return false;
+        checking = true;
+        try {
+            flushDirectors();
+            if (!await preflightDirectorQueue(args)) return false;
+            clearRunStatus();
+            return await original.apply(this, args);
+        } finally { checking = false; }
+    };
+    app.queuePrompt._cineStackPatched = true;
+}

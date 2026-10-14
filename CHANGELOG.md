@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3 — 2026-10-14
+
+- Replace the execution dropdown with visible, keyboard-accessible First pass / Second pass / Follow graph buttons and a run summary. Preserve legacy timeline values and wired Refine settings.
+- Show actionable rolling-All/confirm-first conflicts before queuing; offer explicit stage changes, cache retries and problem-segment details. Recovery never automatically starts generation.
+- Apply preflight to the main ComfyUI Run entry as well as the workbench; honor output dependencies and partial-run targets, skip inactive nodes, recheck strict caches and cancel on settings changes. Keep backend validation and improve its recovery instructions.
+- Add browser and backend regressions; retain versioned frontend resources. No Registry publication.
+
 ## 0.6.2 — 2026-10-14
 
 - Serve all frontend modules and assets from one immutable version-and-content-fingerprinted directory discovered through ComfyUI WEB_DIRECTORY. Fixed old URLs are no longer advertised, so stale proxy/browser copies cannot mix with new dependencies.

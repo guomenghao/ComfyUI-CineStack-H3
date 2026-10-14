@@ -79,7 +79,7 @@ try {
   check((await page.locator('.cs-row').nth(2).innerText()).includes('一采失配'),'mismatch visible beside segment');
   await page.locator('.cs-row').nth(2).locator('.cs-diff summary').click();
   check((await page.locator('.cs-row').nth(2).innerText()).includes('100 → 当前: 200'),'mismatch shows cached and current seed');
-  await page.locator('.cs-mode select').selectOption('refine_only');
+  await page.locator('.cs-mode [data-mode="refine_only"]').click();
   await page.waitForFunction(()=>editor.overview.data!==null);
   check(await page.locator('.cs-queue').isDisabled(),'strict second pass blocked when any selected cache mismatches');
   await page.locator('.cs-scope select').selectOption('selected');
@@ -130,7 +130,7 @@ try {
   await page.evaluate(()=>{refine.mode=4;editor.overview.updateAction()});
   check(await page.locator('.cs-queue').isDisabled(),'bypassed refine cannot enable strict action');
   await page.evaluate(()=>refine.mode=0);
-  await page.locator('.cs-mode select').selectOption('first_pass');
+  await page.locator('.cs-mode [data-mode="first_pass"]').click();
   check(!(await page.locator('.cs-queue').isDisabled()),'first pass can run despite stale/missing cache');
   const refused=await page.evaluate(async()=>{
     const {app}=await import('/scripts/app.js');const original=app.queuePrompt;
@@ -142,7 +142,7 @@ try {
   check(await page.locator('.cs-queue').isDisabled(),'invalid seed blocks queue without silently using old value');
   await input.fill('0');
   check((await page.locator('.cs-source').first().innerText()).includes('本段固定 · 0'),'zero is a fixed seed');
-  await page.locator('.cs-mode select').selectOption('legacy');
+  await page.locator('.cs-mode [data-mode="legacy"]').click();
   check(await page.evaluate(()=>JSON.parse(editor.timelineWidget.value).executionMode)==='legacy','legacy behavior selectable and serialized');
   const jointState = await page.evaluate(() => {
     const before = editor.timeline.segments.map(s => s.first_pass_seed);
@@ -186,18 +186,84 @@ try {
   await lowMemory.uncheck();
   check(!(await page.locator('[data-r="out-export-mode"]').isDisabled()),'turning off both memory modes restores normal export');
   await rolling.check();
+  // Exercise the production global queue wrapper, not only the workbench action.
+  const preflightChecks = await page.evaluate(async () => {
+    const {app}=await import('/scripts/app.js');
+    const {api}=await import('/scripts/api.js');
+    const {installDirectorQueueGuard,rememberQueueNodeDefinition}=await import('/web/js/cinestack_director_overview.js');
+    const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
+    const overview=editor.overview;
+    const savedSeeds=JSON.stringify(editor.timeline.segments.map(s=>s.first_pass_seed));
+    const savedRefine=JSON.stringify(refine.widgets);
+    check(overview.modeButtons.length===3 && !overview.root.querySelector('.cs-mode select'),'three visible stage buttons replace hidden mode dropdown');
+    check(overview.stageConflict && overview.queue.disabled,'rolling All plus legacy confirmation is blocked before submission');
+    check(!overview.recovery.hidden && overview.recovery.textContent.includes('滚动生成＋全部导出'),'conflict explains why and how to choose a stage');
+    check(overview.root.querySelector('.cs-run-summary').textContent.includes('3 段 · 滚动生成 · 全部导出'),'run summary shows selected count and output modes');
+    rememberQueueNodeDefinition({name:'SaveFixture',output_node:true});
+    let reachable=true;
+    app.graphToPrompt=async()=>({output:{56:{class_type:'CineStackH3Director',inputs:{}},90:{class_type:'SaveFixture',inputs:reachable?{images:['56',0]}:{}},91:{class_type:'SaveFixture',inputs:{}}}});
+    let flushes=0;
+    installDirectorQueueGuard(()=>{flushes++;editor.flushTimelineSync()},()=>{});
+    const installed=app.queuePrompt;installDirectorQueueGuard(()=>{},()=>{});
+    check(app.queuePrompt===installed,'global queue guard installs once');
+    const before=globalThis.queued;
+    overview.root.open=false;
+    check(await app.queuePrompt(0,1)===false && globalThis.queued===before,'main Run is stopped before host submission for the same conflict');
+    check(overview.root.open && document.activeElement.dataset.fix==='first_pass','main Run expands and focuses an actionable recovery button');
+    const repair=overview.recovery.querySelector('[data-fix="first_pass"]');repair.click();
+    check(globalThis.queued===before && editor.timeline.executionMode==='first_pass','repair changes only mode and never starts sampling automatically');
+    check(overview.modeButtons[0].getAttribute('aria-pressed')==='true','selected stage has an accessible pressed state');
+    check(JSON.stringify(editor.timeline.segments.map(s=>s.first_pass_seed))===savedSeeds && JSON.stringify(refine.widgets)===savedRefine,'stage recovery preserves independent seeds and wired Refine values');
+    check(JSON.parse(editor.timelineWidget.value).executionMode==='first_pass','repair persists the established workflow field');
+    await app.queuePrompt(0,1);
+    check(globalThis.queued===before+1 && flushes>=2,'global first pass passes through exactly once after preflight');
+    overview.setMode('legacy');
+    reachable=false;
+    await app.queuePrompt(0,1);
+    check(globalThis.queued===before+2,'unused Director does not block an unrelated output');
+    reachable=true;
+    await app.queuePrompt(0,1,{queueNodeIds:['91']});
+    check(globalThis.queued===before+3,'partial execution ignores Directors outside requested dependencies');
+    editor.node.mode=4;await app.queuePrompt(0,1);editor.node.mode=0;
+    check(globalThis.queued===before+4,'bypassed Director does not block queue');
+    editor.timeline.output.exportMode='segments';overview.update();
+    check(!overview.stageConflict,'segment export keeps legacy mixed-stage behavior');
+    editor.timeline.output.exportMode='all';
+    refine.widgets.find(w=>w.name==='confirm_first_pass').value=false;overview.update();
+    check(!overview.stageConflict,'legacy without confirm-first retains old behavior');
+    refine.widgets.find(w=>w.name==='confirm_first_pass').value=true;
+    editor.timeline.runSelectEnabled=false;overview.setMode('refine_only');
+    const count=globalThis.queued;
+    check(await app.queuePrompt(0,1)===false && globalThis.queued===count,'main Run also rejects missing strict second-pass caches');
+    overview.recovery.querySelector('[data-fix="inspect"]').click();
+    check([...overview.rows.values()].some(v=>!v.diff.hidden && v.diff.open),'cache recovery opens concrete segment differences');
+    globalThis.forceMatch=true;await app.queuePrompt(0,1);
+    check(globalThis.queued===count+1,'main Run rechecks and accepts matching second-pass caches');
+    // A disconnected service must never be treated as a matching cache.
+    const fetch=api.fetchApi;api.fetchApi=async()=>{throw new Error('offline')};
+    check(await app.queuePrompt(0,1)===false && globalThis.queued===count+1,'cache request failure stops strict second pass before submission');
+    check(overview.recovery.textContent.includes('offline'),'failed cache request has a visible retry action');
+    api.fetchApi=fetch;globalThis.forceMatch=false;
+    editor.timeline.runSelectEnabled=true;editor.timeline.runSelection=[0,1,3];overview.setMode('legacy');
+    delete app.graphToPrompt;
+    return checks;
+  });checks.push(...preflightChecks);
   await page.locator('.cs-row').nth(3).locator('.cs-title').click();
   check(await page.evaluate(()=>editor.selectedIndex)===3,'overview navigates existing segment editor');
   await page.evaluate(()=>{editor.selectedIndex=0;editor.renderImageBatchGroups()});
+  await page.locator('.cs-mode [data-mode="first_pass"]').focus();
+  await page.keyboard.press('Enter');
+  check(await page.evaluate(()=>editor.timeline.executionMode)==='first_pass','execution buttons support keyboard activation');
+  await page.locator('.cs-mode [data-mode="legacy"]').click();
   await page.evaluate(()=>document.querySelector('main').style.width='540px');
   check(await page.locator('.cstk-overview').evaluate(el=>el.scrollWidth<=el.clientWidth+1),'narrow Comfy node fits even inside a wide browser viewport');
   await page.evaluate(()=>document.querySelector('main').style.width='100%');
   if(process.env.QA_DIR){
     await fs.mkdir(process.env.QA_DIR,{recursive:true});
     await page.evaluate(async()=>{await editor.overview.checkCache();editor.overview.list.scrollTop=0});
-    await page.screenshot({path:path.join(process.env.QA_DIR,'director-desktop.png'),fullPage:true});
+    await page.locator('.cstk-overview').screenshot({path:path.join(process.env.QA_DIR,'director-desktop.png')});
     await page.setViewportSize({width:600,height:1100});
-    await page.screenshot({path:path.join(process.env.QA_DIR,'director-narrow.png'),fullPage:true});
+    await page.locator('.cstk-overview').screenshot({path:path.join(process.env.QA_DIR,'director-narrow.png')});
     check(await page.evaluate(()=>{const el=editor.overview.root;return el.scrollWidth<=el.clientWidth+2}),'workbench has no narrow-panel horizontal overflow');
   }
   check(errors.length===0,`browser errors: ${errors.join(', ')}`);

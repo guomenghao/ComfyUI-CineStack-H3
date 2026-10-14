@@ -1,7 +1,7 @@
 // Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 import { app } from "../../scripts/app.js";
 import { createSegmentSeedControl } from "./minimax_segment_seed.js";
-import { mountDirectorOverview } from "./cinestack_director_overview.js";
+import { mountDirectorOverview, installDirectorQueueGuard, rememberQueueNodeDefinition } from "./cinestack_director_overview.js";
 import { api } from "../../scripts/api.js";
 import {
     CUSTOM_ASPECT_RATIO,
@@ -13409,15 +13409,7 @@ app.registerExtension({
                 node._cineStackEditor?.flushTimelineSync?.();
             }
         };
-        if (app.queuePrompt && !app.queuePrompt._cineStackPatched) {
-            const orig = app.queuePrompt.bind(app);
-            app.queuePrompt = function (...args) {
-                flushDirectors();
-                clearAllDirectorRunStatus();
-                return orig(...args);
-            };
-            app.queuePrompt._cineStackPatched = true;
-        }
+        installDirectorQueueGuard(flushDirectors, clearAllDirectorRunStatus);
 
         api.addEventListener("cinestack_h3_progress", ({ detail }) => {
             findDirectorNode(detail?.node_id)?._cineStackEditor?.setRunProgress?.(detail);
@@ -13516,6 +13508,7 @@ app.registerExtension({
         };
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
+        rememberQueueNodeDefinition(nodeData);
         const cls = nodeType?.comfyClass || nodeData?.name || "";
         // Any node that can emit a Director group list (our packers, the Combine,
         // and third-party packers declaring the same socket type).

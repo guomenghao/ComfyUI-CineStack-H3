@@ -1,0 +1,23 @@
+CineStack 0.6.3 — Execution controls and preflight validation
+Date: 2026-10-14
+
+Scope
+- Replace execution-mode select with visible, keyboard-accessible buttons and a run summary.
+- Preserve executionMode values/defaults, uint64 per-segment seeds, Refine settings and workflow links.
+- Explain rolling All + confirm-first conflict inline with explicit first/second-stage recovery actions.
+- Keep recovery separate from queuing. Add cache retry and problem-segment expansion.
+- Wrap the existing main ComfyUI queue entry: synchronize editor values, check active standard-graph output dependencies / requested partial targets, recheck strict caches, cancel on changes or failures.
+- Preserve backend validation; improve the rolling mixed-stage error with the UI location and required action.
+
+Local verification
+- Release checker and git diff --check passed.
+- 138 Python tests: 136 passed, 2 skipped (system FFmpeg/ffprobe-dependent audio fixtures). CPU adapters only; no GPU inference.
+- Real Chromium: 83 Director workbench checks, 42 seed/version/migration checks, 10 fingerprinted-asset/cache checks, all passed.
+- Browser checks include main Run rejection, explicit recovery without queuing, pressed state, keyboard, selection, strict missing/matching caches, network failure, disabled/unused/partial-scope nodes, preserved Refine/seed values, legacy defaults, desktop and narrow-panel rendering, and no browser exceptions.
+- Desktop/narrow workbench screenshots visually inspected. Mechanical UI detector returned no findings.
+
+Limits
+- Cache-status checks are metadata preflight. Runtime latent integrity, connected-neighbour data and the final execution plan remain validated by the backend.
+- Main Run preflight covers mounted Directors in the standard root graph. Backend guards remain authoritative for API submissions, subgraph/custom execution integrations and dynamically generated input values.
+- GPU quality, 19-segment real generation and server deployment are not claimed by these tests.
+- No Comfy Registry publish workflow was invoked.
