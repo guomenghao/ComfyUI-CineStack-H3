@@ -48,7 +48,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CineStackH3DirectorGroupsCombine": "CineStack H3 Director Groups Combine",
 }
 
-WEB_DIRECTORY = "./web/js"
+from .frontend_assets import get_frontend_assets
+
+# ComfyUI discovers only the versioned tree, never the old fixed script URLs.
+WEB_DIRECTORY = get_frontend_assets().web_directory
 
 import logging
 

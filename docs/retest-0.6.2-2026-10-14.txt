@@ -1,0 +1,25 @@
+CineStack H3 0.6.2 — frontend cache invalidation
+
+Local checks
+- Python: 137 tests; 135 passed, 2 skipped due to unavailable FFmpeg tools for
+  audio sample-rate checks on this host.
+- Chromium: 42 seed/version checks + 59 overview checks + 10 new versioned ESM
+  checks = 111 passed. Host app/API and discovery are fixtures; production JS
+  modules and runtime-built frontend asset tree are real.
+- Old fixed URLs deliberately return stale JS in the new browser fixture.
+  Every entry/dependency uses the fingerprinted tree; no old URL is requested.
+  All 17 JS modules load, extension registration is unique, and canonical host
+  app/api modules load once. Legacy seed/link data and version refresh survive.
+- Fingerprint changes for either code or version changes; unchanged code produces
+  stable URLs. Runtime snapshot and original source files remain unchanged.
+- Nested paths, reverse-proxy base paths and static asset relative references
+  retain their URL semantics. Missing version/sources fail explicitly.
+- Release metadata/example versions, Python 3.10 syntax and JS syntax checked.
+
+Deployment acceptance
+- GitHub push alone does not update an external ComfyUI server.
+- After pull + restart, check /cinestack/h3/version and /extensions, then download
+  the advertised scripts to confirm the versioned tree is actually served.
+- A remote endpoint still returning 0.6.1 has not loaded this fix. Do not claim
+  remote acceptance based only on local/CI tests or a new version on disk.
+- No GPU job, workflow regeneration or official Registry publication is required.

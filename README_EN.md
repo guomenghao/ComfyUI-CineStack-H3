@@ -6,6 +6,10 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Frontend cache invalidation (0.6.2)
+
+All plugin modules and dependencies share a `v<version>-<content fingerprint>/` URL directory. Old fixed-URL proxy/browser entries are bypassed after a server restart and page reload. The version endpoint reports `frontend_asset_version`, matching resource paths returned by `/extensions`. Host ComfyUI modules keep their canonical URLs.
+
 ## Workflow version labels (0.6.1)
 
 Existing, migrated, nested, newly created and pasted CineStack nodes now display the package version loaded by the current server. Save the workflow to retain refreshed metadata. Seeds, parameters and links are unchanged. Restart ComfyUI after updating, refresh the browser, and reopen the workflow. An unavailable version endpoint preserves saved metadata and emits a browser warning.
@@ -69,7 +73,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.1 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.2 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

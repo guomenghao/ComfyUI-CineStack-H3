@@ -16,6 +16,7 @@ import folder_paths
 from aiohttp import web
 from server import PromptServer
 from ..package_version import PLUGIN_VERSION
+from ..frontend_assets import get_frontend_assets
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director")
 
@@ -637,7 +638,8 @@ async def cinestack_version(request):
     if PLUGIN_VERSION is None:
         return web.json_response({"error": "Installed plugin version unavailable"},
                                  status=503, headers={"Cache-Control": "no-store"})
-    return web.json_response({"package": "cinestack-h3", "version": PLUGIN_VERSION},
+    return web.json_response({"package": "cinestack-h3", "version": PLUGIN_VERSION,
+                              "frontend_asset_version": get_frontend_assets().token},
                              headers={"Cache-Control": "no-store"})
 
 

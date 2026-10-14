@@ -2,6 +2,7 @@
 import ast
 import asyncio
 import tempfile
+from types import SimpleNamespace
 from aiohttp import web
 import importlib.util
 import json
@@ -91,11 +92,13 @@ class CineStackReleaseTests(unittest.TestCase):
     def test_version_route_reports_runtime_snapshot_and_disables_cache(self):
         tree = ast.parse((ROOT / "director/http_routes.py").read_text())
         handler = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "cinestack_version")
-        namespace = {"PLUGIN_VERSION": "1.2.3", "web": web}
+        namespace = {"PLUGIN_VERSION": "1.2.3", "web": web,
+                     "get_frontend_assets": lambda: SimpleNamespace(token="v1.2.3-test")}
         exec(compile(ast.Module(body=[handler], type_ignores=[]), "http_routes.py", "exec"), namespace)
         response = asyncio.run(namespace[handler.name](None))
         self.assertEqual(response.status, 200)
-        self.assertEqual(json.loads(response.text), {"package": "cinestack-h3", "version": "1.2.3"})
+        self.assertEqual(json.loads(response.text), {"package": "cinestack-h3", "version": "1.2.3",
+                                                     "frontend_asset_version": "v1.2.3-test"})
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         namespace["PLUGIN_VERSION"] = None
         response = asyncio.run(namespace[handler.name](None))

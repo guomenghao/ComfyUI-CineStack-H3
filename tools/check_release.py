@@ -36,7 +36,7 @@ def main():
     keys = [key.value for key in registered.keys]
     assert len(keys) == len(set(keys)), "Duplicate node mappings"
     assert set(keys) == set(mapping.values()), "Node registry and migration mapping disagree"
-    for rel in ("LICENSE", "NOTICE", "package_version.py", "director/segment_seed.py", "director/refine_only.py",
+    for rel in ("LICENSE", "NOTICE", "package_version.py", "frontend_assets.py", "director/segment_seed.py", "director/refine_only.py",
                 "web/js/minimax_segment_seed.js", "web/js/cinestack_migration.js", "node_ids.json",
                 "web/js/cinestack_director_overview.js", "director/execution_mode.py", "director/low_memory.py", "director/rolling.py", "lib/frame_stream.py",
                 "director/rolling_store.py", "lib/video_ranges.py", "director/junctions.py"):

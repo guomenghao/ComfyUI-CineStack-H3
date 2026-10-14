@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 — 2026-10-14
+
+- Serve all frontend modules and assets from one immutable version-and-content-fingerprinted directory discovered through ComfyUI WEB_DIRECTORY. Fixed old URLs are no longer advertised, so stale proxy/browser copies cannot mix with new dependencies.
+- Keep relative plugin dependencies in the same versioned tree and normalize host app/api imports to canonical ComfyUI URLs, avoiding duplicate module instances. Build in OS temporary storage without modifying installed sources or workflows.
+- Expose frontend_asset_version in the running version endpoint. Add real-browser stale-cache/discovery tests and checks for nested imports, fingerprints and process-lifetime snapshots. No Registry publication.
+
 ## 0.6.1 — 2026-10-14
 
 - Read the installed package version from pyproject.toml once at server startup and expose it through a non-cacheable /cinestack/h3/version endpoint. Updating files without restarting cannot falsely report the new runtime version.

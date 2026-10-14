@@ -30,3 +30,4 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node tests/test_segment_seed_frontend.mjs
       - run: node tests/test_director_overview_frontend.mjs
+      - run: node tests/test_frontend_asset_cache.mjs
