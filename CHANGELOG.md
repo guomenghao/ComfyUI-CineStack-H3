@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — 2026-10-14
+
+- Read the installed package version from pyproject.toml once at server startup and expose it through a non-cacheable /cinestack/h3/version endpoint. Updating files without restarting cannot falsely report the new runtime version.
+- Refresh version metadata for existing CineStack workflows, legacy migrations, nested graphs, newly created nodes and pasted nodes. Preserve seeds, inputs, links and unrelated/upstream nodes; retain saved metadata if the version endpoint is unavailable.
+- Remove hard-coded migration versions from both browser and CLI paths, refresh bundled examples, and validate example version alignment during release checks. No Registry publication.
+
 ## 0.6.0 — 2026-10-14
 
 - Interpret existing timeline links as junction constraints: previous exported tail and unselected next exported head for partial first-pass rebuilds; selected islands remain sequential. Disconnected edges skip both conditioning and rolling seam processing.

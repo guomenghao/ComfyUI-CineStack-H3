@@ -31,3 +31,12 @@ python tools/migrate_workflow.py old_workflow.json cinestack_workflow.json
 
 仓库名、节点 ID、HTTP 路由和进度事件已独立。
 完整 ComfyUI 共存测试尚未在目标 GPU 设备执行；迁移与前端行为由 CPU/浏览器回归覆盖。
+
+## 当前安装版本标记（0.6.1）
+
+- 浏览器从 `/cinestack/h3/version` 读取服务启动时的 `pyproject.toml` 版本；响应禁止缓存。仅替换磁盘文件而未重启服务时，不会宣称服务已运行新版本。
+- 已有 CineStack 节点、自动迁移的旧节点、子图和旧式组合节点、新建与粘贴节点都会刷新 `properties.ver`。保存后写入工作流；不更改 seed、输入、连线、节点 ID 或自定义标题。
+- 原作者插件仍安装且注册了旧节点类型时，保持旧节点归属，不将其版本改成影栈版本。
+- 离线 `tools/migrate_workflow.py` 使用所安装仓库的版本，已有 CineStack 节点也刷新元数据；API prompt 不注入 UI 属性。
+- 接口失败、超时或返回无效版本时，保留旧元数据并在浏览器控制台提示。此时先检查服务重启与访问地址，不将旧角标作为已加载代码版本的唯一证据。
+- 该标记表示当前安装版本，不表示已上架 Registry，也不改变缓存是否匹配。

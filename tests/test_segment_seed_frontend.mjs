@@ -38,6 +38,57 @@ try {
     const checks = [];
     const check = (ok, name) => { if (!ok) throw new Error(name); checks.push(name); };
     const migration = await import('/web/js/cinestack_migration.js');
+    const {api:versionApi} = await import('/scripts/api.js');
+    const {app:versionApp} = await import('/scripts/app.js');
+    const ext = globalThis.extensions.find(x => x.name === 'CineStack.H3.WorkflowMigration');
+    const saved = {nodes:[{type:'CineStackH3Director',properties:{ver:'0.1.1',custom:'keep'},
+      widgets_values:['18446744073709551615'],inputs:[{name:'model',link:1}]}],links:[[1,2,0,3,0,'MODEL']]};
+    const savedBefore = JSON.stringify(saved);
+    let requests = 0;
+    versionApi.fetchApi = async () => {requests++; return new Response('{}',{status:404});};
+    await ext.beforeConfigureGraph(saved);
+    check(JSON.stringify(saved) === savedBefore, 'missing version endpoint preserves workflow metadata');
+    versionApi.fetchApi = async () => {throw new Error('offline');};
+    check(await migration.loadInstalledVersion() === null, 'offline server does not invent a version');
+    versionApi.fetchApi = async () => new Response(JSON.stringify({package:'other',version:'9.9.9'}));
+    check(await migration.loadInstalledVersion() === null, 'wrong package response is rejected');
+    versionApi.fetchApi = async () => new Response(JSON.stringify({package:'cinestack-h3',version:'main'}));
+    check(await migration.loadInstalledVersion() === null, 'invalid version response is rejected');
+    versionApi.fetchApi = async (url, options) => {
+      requests++;
+      check(url === '/cinestack/h3/version' && options.cache === 'no-store', 'version request bypasses browser cache');
+      return new Response(JSON.stringify({package:'cinestack-h3',version:'7.8.9'}));
+    };
+    versionApp.graph._nodes = [saved.nodes[0]];
+    await Promise.all([ext.setup(), ext.beforeConfigureGraph(saved)]);
+    check(requests === 2, 'concurrent setup and load share one request after failed attempt');
+    check(saved.nodes[0].properties.ver === '7.8.9' && saved.nodes[0].properties.custom === 'keep', 'existing CineStack nodes use server version and retain custom metadata');
+    check(saved.nodes[0].widgets_values[0] === '18446744073709551615' && saved.nodes[0].inputs[0].link === 1 && saved.links[0][3] === 3, 'version refresh preserves exact seed and links');
+    await ext.beforeConfigureGraph(saved);
+    check(requests === 2, 'loaded server version reused without per-node requests');
+    const nested = {nodes:[],definitions:{subgraphs:[{nodes:[{type:'MiniMaxH3Director',properties:{ver:'old'}}]}]},
+      extra:{groupNodes:{group:{nodes:[{type:'CineStackH3DirectorRefine',properties:{ver:'old'}}]}}}};
+    await ext.beforeConfigureGraph(nested);
+    check(nested.definitions.subgraphs[0].nodes[0].properties.ver === '7.8.9' && nested.extra.groupNodes.group.nodes[0].properties.ver === '7.8.9', 'nested modern and legacy groups refresh version');
+    const fresh = {comfyClass:'CineStackH3Director'};
+    ext.nodeCreated(fresh);
+    check(fresh.properties.ver === '7.8.9', 'new nodes use installed version');
+    fresh.properties.ver = 'old'; ext.loadedGraphNode(fresh);
+    check(fresh.properties.ver === '7.8.9', 'loaded nodes replace restored old version');
+    function Node() {}
+    Node.prototype.onConfigure = function (data) { this.properties = {...data.properties}; this.widgets_values=data.widgets_values; return 42; };
+    ext.beforeRegisterNodeDef(Node, {name:'CineStackH3Director'});
+    const pasted = new Node();
+    check(pasted.onConfigure({properties:{ver:'0.1.0',custom:'pasted'},widgets_values:['18446744073709551615']}) === 42 && pasted.properties.ver === '7.8.9' && pasted.properties.custom === 'pasted' && pasted.widgets_values[0] === '18446744073709551615', 'paste configuration restores version after old properties without altering hook result');
+    const unrelated = {type:'MiniMaxH3ImageToVideo',properties:{ver:'upstream'}};
+    const upstreamVersion = {type:'MiniMaxH3Director',properties:{ver:'upstream'}};
+    migration.migrateWorkflowInPlace({nodes:[unrelated,upstreamVersion]}, () => true);
+    ext.nodeCreated(unrelated);
+    check(unrelated.properties.ver === 'upstream' && upstreamVersion.properties.ver === 'upstream', 'unrelated and installed upstream nodes retain own versions');
+    const promptVersion = {'1':{class_type:'CineStackH3Director',inputs:{seed:'18446744073709551615'}}};
+    migration.migrateWorkflowInPlace(promptVersion);
+    check(!promptVersion['1'].properties && promptVersion['1'].inputs.seed === '18446744073709551615', 'API prompt has no injected UI metadata');
+    check(JSON.parse(JSON.stringify(saved)).nodes[0].properties.ver === '7.8.9', 'saving refreshed workflow retains installed version');
     const old = {nodes:[{id:9,type:'MiniMaxH3Director',widgets_values:[0,'18446744073709551615'],
       inputs:[{name:'model',link:11}]}],links:[[11,1,0,9,0,'MODEL']],
       definitions:{subgraphs:[{nodes:[{type:'MiniMaxH3DirectorRefine'}]}]}};

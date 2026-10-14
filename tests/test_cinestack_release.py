@@ -1,4 +1,8 @@
 """Check migration preserves real workflows and independent runtime identities."""
+import ast
+import asyncio
+import tempfile
+from aiohttp import web
 import importlib.util
 import json
 from pathlib import Path
@@ -50,6 +54,54 @@ class CineStackReleaseTests(unittest.TestCase):
         again, count = migration.migrate_workflow(graph)
         self.assertEqual(count, 0)
         self.assertEqual(again, graph)
+
+    def test_existing_cinestack_and_nested_versions_refresh_without_input_changes(self):
+        node = {"type": "CineStackH3Director", "properties": {"ver": "0.1.1", "custom": 17},
+                "widgets_values": ["18446744073709551615"], "inputs": [{"link": 3}]}
+        graph = {"nodes": [node, {"type": "Other", "properties": {"ver": "other"}}],
+                 "definitions": {"subgraphs": [{"nodes": [node]}]},
+                 "extra": {"groupNodes": {"old": {"nodes": [node]}}}}
+        result, count = migration.migrate_workflow(graph)
+        self.assertEqual(count, 0)
+        self.assertEqual(node["properties"]["ver"], "0.1.1")
+        for updated in (result["nodes"][0], result["definitions"]["subgraphs"][0]["nodes"][0],
+                        result["extra"]["groupNodes"]["old"]["nodes"][0]):
+            self.assertEqual(updated["properties"]["ver"], migration.PLUGIN_VERSION)
+            self.assertEqual(updated["properties"]["custom"], 17)
+            self.assertEqual(updated["widgets_values"], node["widgets_values"])
+            self.assertEqual(updated["inputs"], node["inputs"])
+        self.assertEqual(result["nodes"][1], graph["nodes"][1])
+
+    def test_version_reader_uses_only_project_section_and_supports_python310(self):
+        module = migration._version_module
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            self.assertEqual(module.PLUGIN_VERSION, tomllib.load(stream)["project"]["version"])
+        ast.parse((ROOT / "package_version.py").read_text(), feature_version=(3, 10))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pyproject.toml"
+            path.write_text("[tool.other]\nversion = \"9.9.9\"\n[project]\nversion = '1.2.3' # test\n")
+            self.assertEqual(module.read_project_version(path), "1.2.3")
+            for contents in ("[tool.other]\nversion = '9.9.9'", "[project]\nversion = 'main'"):
+                path.write_text(contents)
+                with self.assertRaises(ValueError):
+                    module.read_project_version(path)
+        # Reading a different on-disk version never mutates this process's startup snapshot.
+        self.assertEqual(module.PLUGIN_VERSION, migration.PLUGIN_VERSION)
+
+    def test_version_route_reports_runtime_snapshot_and_disables_cache(self):
+        tree = ast.parse((ROOT / "director/http_routes.py").read_text())
+        handler = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "cinestack_version")
+        namespace = {"PLUGIN_VERSION": "1.2.3", "web": web}
+        exec(compile(ast.Module(body=[handler], type_ignores=[]), "http_routes.py", "exec"), namespace)
+        response = asyncio.run(namespace[handler.name](None))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(json.loads(response.text), {"package": "cinestack-h3", "version": "1.2.3"})
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        namespace["PLUGIN_VERSION"] = None
+        response = asyncio.run(namespace[handler.name](None))
+        self.assertEqual(response.status, 503)
+        self.assertNotIn("version", json.loads(response.text))
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
     def test_release_metadata_and_publisher_gate(self):
         result = subprocess.run([sys.executable, str(ROOT / "tools/check_release.py")], capture_output=True)

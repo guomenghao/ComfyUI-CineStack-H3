@@ -6,6 +6,12 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Workflow version labels (0.6.1)
+
+Existing, migrated, nested, newly created and pasted CineStack nodes now display the package version loaded by the current server. Save the workflow to retain refreshed metadata. Seeds, parameters and links are unchanged. Restart ComfyUI after updating, refresh the browser, and reopen the workflow. An unavailable version endpoint preserves saved metadata and emits a browser warning.
+
+Check the running version with `curl -fsS http://127.0.0.1:8188/cinestack/h3/version` (adjust the port). This is the installed runtime version, not a claim of Registry publication.
+
 ## Connected junctions (0.6.0)
 
 With Segment continuity on, rebuilding only clip 4 uses clip 3's exported tail when 3–4 is connected, and clip 5's exported first frame when 4–5 is connected and clip 5 is unselected. Disconnect either edge to remove that constraint. Links override manual start/end stills. Selected islands generate forwards internally; only outside boundaries read unselected neighbours. Missing boundary caches stop with segment/side diagnostics before sampling.
@@ -63,7 +69,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.0 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.1 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

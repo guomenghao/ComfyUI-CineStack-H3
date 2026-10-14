@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.0** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.1** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 工作流版本显示（0.6.1）
+
+旧工作流打开、新建或粘贴影栈节点时，节点版本标记会同步为当前 ComfyUI 服务加载的插件版本。保存工作流后会保留更新后的标记；seed、参数和连线不变。更新代码后需重启 ComfyUI，再刷新浏览器并重新打开工作流。版本接口不可用时保留原标记并输出浏览器警告，不猜测版本。
+
+可在服务器执行 `curl -fsS http://127.0.0.1:8188/cinestack/h3/version` 核对运行版本（端口按实际设置调整）。此版本号不代表已经发布到 Comfy Registry。详见 [迁移说明](docs/migration.md)。
 
 ## 连接线与局部重做（0.6.0）
 
@@ -117,7 +123,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.0` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.1` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

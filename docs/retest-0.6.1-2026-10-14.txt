@@ -1,0 +1,31 @@
+CineStack H3 0.6.1 — workflow version metadata verification
+2026-10-14
+
+Scope
+- Runtime version comes from [project].version at module import, exposed via
+  GET /cinestack/h3/version with Cache-Control: no-store.
+- Browser setup/workflow load refreshes existing, migrated and nested CineStack
+  node properties. Creation, loaded-node and configure hooks cover new/pasted nodes.
+- Endpoint failure preserves saved metadata; no fallback hard-coded version.
+- CLI migration and bundled examples use the installed package version.
+- Upstream and unrelated nodes, exact uint64 seeds, widget values, links and IDs
+  are preserved. Sampling/cache/rolling implementation is unchanged.
+
+Local validation
+- Python unittest discovery: 132 tests, 130 passed, 2 skipped because FFmpeg tools
+  required by audio sample-rate tests were unavailable on this host.
+- Real Chromium + plugin JS, simulated ComfyUI host hooks/API: 42 seed/migration
+  checks and 59 Director overview checks passed (101 total).
+- Python 3.10 AST parsing, all browser JS syntax, release metadata/example version
+  guard and git diff whitespace checks passed.
+- Added 3 Python cases and 16 browser checks for version reading, endpoint failure,
+  identity validation, request deduplication, old/nested/pasted/new nodes, preservation
+  of generation inputs and serialized metadata.
+
+Limits and acceptance
+- Browser tests use host fixtures; no remote user's ComfyUI instance was controlled.
+- No GPU generation or RAM ceiling validation was performed for this metadata fix.
+- After git pull, restart ComfyUI, refresh browser and reopen/save the old workflow.
+  Verify GET /cinestack/h3/version reports 0.6.1 and CineStack node properties.ver
+  matches. An unavailable endpoint keeps saved metadata and warns in browser console.
+- Registry publishing remains manual and was not invoked.

@@ -15,6 +15,7 @@ import uuid
 import folder_paths
 from aiohttp import web
 from server import PromptServer
+from ..package_version import PLUGIN_VERSION
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director")
 
@@ -631,6 +632,15 @@ def _register_route(routes, method: str, path: str, handler) -> None:
         raise AttributeError("Unsupported ComfyUI route table API")
 
 
+async def cinestack_version(request):
+    # Do not report a newer disk checkout until this process has restarted.
+    if PLUGIN_VERSION is None:
+        return web.json_response({"error": "Installed plugin version unavailable"},
+                                 status=503, headers={"Cache-Control": "no-store"})
+    return web.json_response({"package": "cinestack-h3", "version": PLUGIN_VERSION},
+                             headers={"Cache-Control": "no-store"})
+
+
 def register_routes() -> bool:
     """Register CineStack H3 Director HTTP routes on the ComfyUI PromptServer."""
     global _ROUTES_REGISTERED
@@ -643,6 +653,7 @@ def register_routes() -> bool:
         return False
 
     routes = server.routes
+    _register_route(routes, "GET", "/cinestack/h3/version", cinestack_version)
     _register_route(routes, "POST", "/cinestack/h3/upload_chunk", minimax_upload_video_chunk)
     _register_route(
         routes,
