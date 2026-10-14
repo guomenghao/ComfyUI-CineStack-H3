@@ -13,13 +13,14 @@ from .segment_seed import resolve_segment_seed
 
 
 class RollingRun:
-    def __init__(self, plan, root):
+    def __init__(self, plan, root, store=None):
         if root is None:
             raise RuntimeError("滚动生成：无法创建视频目录，未开始采样。")
         self.plan, self.root = plan, Path(root)
         self.pending, self.entries, self.parts = {}, {}, {}
         self.status = "running"
         self.merged = {}
+        self.store, self.full_export = store, None
         self.shared_stages = not (plan.refine or {}).get("enabled") and not (plan.face_refine or {}).get("enabled")
         self.write_manifest()
 
@@ -27,7 +28,7 @@ class RollingRun:
         payload = {"version": 2, "mode": "rolling", "status": self.status,
                    "scope": "executed_segments", "frame_rate": self.plan.frame_rate,
                    "segments": list(self.entries.values()), "pending": list(self.pending),
-                   "merged": self.merged}
+                   "merged": self.merged, "full_export": self.full_export}
         staging = self.root / ".manifest.tmp"
         staging.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(staging, self.root / "manifest.json")
@@ -106,6 +107,8 @@ class RollingRun:
             except OSError:
                 shutil.copy2(source, dest)
             self.merged["final"] = {"path": str(dest), "complete": True}
+        if self.store:
+            notes.extend(self.store.commit(self))
         self.status = "completed"
         self.write_manifest()
         return [f"滚动生成：当前段＋上一段；已输出 {len(entries)} 个选中段。目录：{self.root}",

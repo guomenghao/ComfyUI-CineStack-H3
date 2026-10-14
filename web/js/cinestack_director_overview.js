@@ -27,6 +27,7 @@ const COPY = {
         pinUnsafe: "全局 seed 超出浏览器精确整数范围；请直接输入本段十进制 seed。",
         notConfirmed: "ComfyUI 尚未确认提交，请查看宿主队列或错误提示后再操作。",
         rolling: "滚动生成：保留当前段＋上一段；连续编码，无逐段/中间轮次视频；IMAGE/AUDIO 不输出，文件路径见报告。",
+        rollingAll: "全部导出＋滚动：只生成选中段，复用其他段已有视频合成整片；缺失或失配会停止，不补跑。IMAGE/AUDIO 不输出，文件路径见报告。",
         lowMemory: "低内存落盘：只保存本轮勾选段，文件路径见报告；IMAGE/AUDIO 不输出完整视频。",
     },
     en: {
@@ -49,6 +50,7 @@ const COPY = {
         pinUnsafe: "Global seed exceeds browser integer precision. Enter an exact decimal seed for this segment.",
         notConfirmed: "ComfyUI did not confirm submission. Check its queue or error message before retrying.",
         rolling: "Rolling: current + previous; continuous encoding without per-segment/intermediate videos. IMAGE/AUDIO blocked; see report paths.",
+        rollingAll: "All + rolling: generate checked segments, reuse saved videos for the rest and export the full timeline. Missing/mismatched results stop the run; never resample unchecked segments. File output only.",
         lowMemory: "Low RAM: save checked segments only. See file paths in the report; IMAGE/AUDIO sockets do not emit full clips.",
     },
 };
@@ -297,7 +299,7 @@ export class DirectorOverview {
         this.queue.disabled = this.busy || Boolean(reason);
         this.message.dataset.tone = reason || this.cacheError || this.submitError ? "error" : ready || this.queueNotice ? "ok" : "muted";
         this.message.textContent = reason || this.submitError || this.cacheError || this.queueNotice || (ready ? label("ready") : label("scopeHint"));
-        if (this.editor.timeline.output?.rollingGeneration === true) this.message.textContent += ` ${label("rolling")}`;
+        if (this.editor.timeline.output?.rollingGeneration === true) this.message.textContent += ` ${label(this.editor.timeline.output?.exportMode === "segments" ? "rolling" : "rollingAll")}`;
         else if (this.editor.timeline.output?.lowMemoryMode === true) this.message.textContent += ` ${label("lowMemory")}`;
         this.queue.title = reason || label("scopeHint");
     }

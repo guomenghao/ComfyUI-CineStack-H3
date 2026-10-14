@@ -3094,6 +3094,10 @@ class CineStackH3DirectorEditor {
                 <input type="checkbox" data-r="out-rolling-generation">
                 <span data-i18n="output.rollingGeneration">滚动生成（当前段＋上一段）</span>
             </label>
+            <label class="hidden" data-r="out-rolling-base-wrap" data-i18n-title="tooltip.rollingBaseManifest">
+                <span data-i18n="output.rollingBaseManifest">旧版完整结果 manifest（可选）</span>
+                <input type="text" class="bd-num" data-r="out-rolling-base" style="width:220px;max-width:100%;min-width:0;text-align:left" aria-label="旧版完整结果 manifest / Existing full result manifest">
+            </label>
             <span class="hidden" data-r="out-max-frames-wrap" hidden aria-hidden="true">
                 <label data-i18n="output.maxFrames">最大帧数</label>
                 <input type="number" class="bd-num" data-r="out-max-frames" min="0" max="999999" step="1" value="0" style="width:64px">
@@ -3458,6 +3462,8 @@ class CineStackH3DirectorEditor {
         this.outExportMode = this.root.querySelector('[data-r="out-export-mode"]');
         this.outLowMemory = this.root.querySelector('[data-r="out-low-memory"]');
         this.outRolling = this.root.querySelector('[data-r="out-rolling-generation"]');
+        this.outRollingBase = this.root.querySelector('[data-r="out-rolling-base"]');
+        this.outRollingBaseWrap = this.root.querySelector('[data-r="out-rolling-base-wrap"]');
         this.segmentContinuityWrap = this.root.querySelector('[data-r="segment-continuity-wrap"]');
         this.segmentContinuityCb = this.root.querySelector('[data-r="segment-continuity-cb"]');
         this.segmentContinuityOverlap = this.root.querySelector('[data-r="segment-continuity-overlap"]');
@@ -3777,6 +3783,7 @@ class CineStackH3DirectorEditor {
         this.outExportMode.onchange = () => this.onOutputField("exportMode", this.outExportMode.value);
         this.outLowMemory.onchange = () => this.onOutputField("lowMemoryMode", this.outLowMemory.checked);
         this.outRolling.onchange = () => this.onOutputField("rollingGeneration", this.outRolling.checked);
+        this.outRollingBase.onchange = () => this.onOutputField("rollingBaseManifest", this.outRollingBase.value);
         if (this.outAudioMode) {
             this.outAudioMode.onchange = () => this.onOutputField("audioMode", this.outAudioMode.value);
         }
@@ -4445,9 +4452,10 @@ class CineStackH3DirectorEditor {
             this.runSelectSummary.style.color = "#aaa";
         } else {
             const nums = (this.timeline.runSelection || []).map((i) => i + 1).join(", ");
-            const exportHint = this.timeline.output?.exportMode === "segments" || this.timeline.output?.lowMemoryMode || this.timeline.output?.rollingGeneration
-                ? t("runSelect.exportOnlyChecked")
-                : t("runSelect.fillUnchecked");
+            const exportHint = this.timeline.output?.rollingGeneration && this.timeline.output?.exportMode !== "segments"
+                ? t("runSelect.reuseVideos")
+                : this.timeline.output?.exportMode === "segments" || this.timeline.output?.lowMemoryMode
+                    ? t("runSelect.exportOnlyChecked") : t("runSelect.fillUnchecked");
             this.runSelectSummary.textContent = count === 1
                 ? t("runSelect.sampleOne", { unit: label, nums, hint: exportHint })
                 : t("runSelect.sampleMany", { count, unit: label, nums, hint: exportHint });
@@ -6629,7 +6637,9 @@ class CineStackH3DirectorEditor {
         if (this.outExportMode) this.outExportMode.value = out.exportMode === "segments" ? "segments" : "all";
         if (this.outLowMemory) this.outLowMemory.checked = out.lowMemoryMode === true;
         if (this.outRolling) this.outRolling.checked = out.rollingGeneration === true;
-        if (this.outExportMode) this.outExportMode.disabled = out.lowMemoryMode === true || out.rollingGeneration === true;
+        if (this.outExportMode) this.outExportMode.disabled = out.lowMemoryMode === true && out.rollingGeneration !== true;
+        if (this.outRollingBase) this.outRollingBase.value = out.rollingBaseManifest || "";
+        if (this.outRollingBaseWrap) this.outRollingBaseWrap.classList.toggle("hidden", out.rollingGeneration !== true || out.exportMode === "segments");
         if (this.exportSourceImagesCb) this.exportSourceImagesCb.disabled = out.lowMemoryMode === true || out.rollingGeneration === true;
         if (this.outAudioMode) {
             const am = normalizeAudioMode(out.audioMode);
@@ -7028,6 +7038,8 @@ class CineStackH3DirectorEditor {
         } else if (key === "rollingGeneration") {
             this.timeline.output.rollingGeneration = value === true;
             if (value === true) this.timeline.output.lowMemoryMode = false;
+        } else if (key === "rollingBaseManifest") {
+            this.timeline.output.rollingBaseManifest = String(value || "").trim();
         } else if (key === "audioMode") {
             this.timeline.output.audioMode = normalizeAudioMode(value);
         } else if (key === "continuityEnabled") {

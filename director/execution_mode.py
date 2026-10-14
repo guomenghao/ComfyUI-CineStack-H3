@@ -12,6 +12,10 @@ def low_memory_enabled(plan) -> bool:
     return output.get("lowMemoryMode", False) is True or rolling_enabled(plan)
 
 
+def rolling_full_export(plan) -> bool:
+    return rolling_enabled(plan) and getattr(plan, "export_mode", "all") == "all"
+
+
 def disk_export_enabled(plan) -> bool:
     return low_memory_enabled(plan) or getattr(plan, "export_mode", "all") == "segments"
 

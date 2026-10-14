@@ -6,12 +6,18 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
-Current patch **0.4.1** fixes delayed-export reference audio retention, strict handoff validation and encoder failure cleanup. See [retest scope](docs/retest-0.4.1-2026-10-14.txt).
+## Rolling export (0.5.0)
 
-## Rolling generation (0.4.0)
+Enable **Rolling generation**, then choose the existing export scope:
 
-Enable **Rolling generation · current + previous** in output settings. The predecessor stays in memory until its successor has completed guidance, phase trimming and seam correction, then enters a persistent video encoder. Full RGB caches and per-segment/intermediate MP4s are skipped; first-pass AV caches, exact segment seeds and strict second-pass validation remain.
-For a fixed canvas, each output stage is encoded continuously; the final audio mux copies the encoded video stream. Canvas changes use bounded parts and require normalization. Only executed segments are delivered; full IMAGE/AUDIO sockets are blocked. See report paths and [details](docs/rolling-generation.txt). Legacy workflows and the 0.3.0 disk mode keep their previous defaults.
+- **All + Rolling:** sample checked segments only, reuse saved video ranges for unchecked segments, and write `timeline_first_pass.mp4` or `timeline_final.mp4`.
+- **Segments + Rolling:** export only checked segments, retaining `first_pass.mp4` / `final.mp4` behavior.
+
+A durable index under the same node/cache key tracks saved stages and ranges. Missing, mismatched or modified results stop the run instead of regenerating unchecked segments. For a 0.4.x full rolling result, explicitly supply its server-side output folder or manifest.json in the optional legacy field; older manifests lack full identity metadata, so verify their segment order and assets. Keep referenced output videos on disk.
+
+Composition reads and re-encodes bounded ranges in FFmpeg and streams PCM, without a full-timeline Python IMAGE tensor. This adds CPU/disk work, not model inference. Unselected video lengths and handoffs are preserved; review replacement seams. Full IMAGE/AUDIO sockets remain blocked. Independent seeds and strict second pass remain supported.
+
+Non-rolling workflows and old disk mode are unchanged. Existing rolling workflows set to All now use full-timeline semantics. See [usage and migration](docs/rolling-full-export.txt) and [rolling internals](docs/rolling-generation.txt). Registry publishing remains manual; GPU acceptance is pending.
 
 ## Features
 
@@ -49,7 +55,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.4.1 includes rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.5.0 includes rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

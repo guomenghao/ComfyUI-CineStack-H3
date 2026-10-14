@@ -31,6 +31,8 @@ class RollingTests(unittest.TestCase):
         plan = self.case.build(seeds)
         plan.raw["executionMode"] = mode
         plan.raw["output"]["rollingGeneration"] = True
+        plan.raw["output"]["exportMode"] = "segments"
+        plan.export_mode = "segments"
         return plan
 
     def execute(self, plan, first=None, second=None, **patches):
@@ -124,6 +126,9 @@ class RollingTests(unittest.TestCase):
     def continuity_plan(self, enabled=True):
         plan = self.build()
         plan.raw["output"]["rollingGeneration"] = enabled
+        if not enabled:
+            plan.export_mode = "all"
+            plan.raw["output"]["exportMode"] = "all"
         plan.continuity_enabled = True
         plan.continuity_overlap_frames = 22
         plan.width = plan.height = 96

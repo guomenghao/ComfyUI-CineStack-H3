@@ -104,8 +104,9 @@ from .segment_continuity import (
     resolve_prev_segment_output,
 )
 from .vram_cleanup import cleanup_segment_vram
-from .execution_mode import low_memory_enabled, rolling_enabled
+from .execution_mode import low_memory_enabled, rolling_enabled, rolling_full_export
 from .rolling import RollingRun
+from .rolling_store import RollingStore
 from .low_memory import LowMemoryRun, validate_low_memory, ram_snapshot
 
 from .refine_only import validate_refine_only_cache
@@ -487,6 +488,7 @@ def _execute_director_plan_core(
         validate_refine_only_cache(node_id, plan)
     if low_memory:
         validate_low_memory(plan, node_id)
+    rolling_store = RollingStore(plan, node_id) if rolling else None
 
     # Drop caches for deleted/shortened timelines. Use every segment index (not
     # run_indices): unselected「选择运行」slots still fill merge/export from disk.
@@ -538,7 +540,7 @@ def _execute_director_plan_core(
     plan.segment_mp4_run_dir = str(output_run_dir) if output_run_dir is not None else None
     mp4_run_dir = None if rolling else output_run_dir
     disk_run = LowMemoryRun(plan, mp4_run_dir) if low_memory and not rolling else None
-    rolling_run = RollingRun(plan, output_run_dir) if rolling else None
+    rolling_run = RollingRun(plan, output_run_dir, rolling_store) if rolling else None
     if rolling_run:
         plan._active_rolling_run = rolling_run
     if rolling:
@@ -1019,6 +1021,9 @@ def _execute_director_plan_core(
             # Phase-align can pin a few frames before the previous export end.
             # Drop that orphaned tail so concat does not replay it at the seam.
             trimmed_prev_export = 0
+            if prev_export_trim > 0 and rolling_full_export(plan) and prev_idx not in run_indices:
+                reports.append(f"Segment {prev_idx + 1}: 未选段保留已有视频长度，不重写其裁剪记录；请检查替换接点。")
+                prev_export_trim = 0
             if prev_export_trim > 0:
                 fps = float(plan.frame_rate or 24)
                 prev_chunk = completed_outputs.get(prev_idx)
@@ -2022,8 +2027,10 @@ def _execute_director_plan_core(
         report_director_finish(progress_node_id, seg_total)
         shift_cache.clear()
         poster = torch.full((1, 2, 2, 3), 0.5)
+        counts = ([row[rolling_store.stage]["frames"] for row in rolling_run.full_export["segments"]]
+                  if rolling_run and rolling_run.full_export else [segment_export_lengths[i] for i in run_list])
         return (poster, segment_outputs, [], "\n".join(reports),
-                [segment_export_lengths[i] for i in run_list], poster, segment_pre_refine,
+                counts, poster, segment_pre_refine,
                 held_for_confirmation, None, [])
 
     report_director_finish(progress_node_id, seg_total)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-10-14
+
+- Honor All export + Rolling as full-timeline disk composition: generate only selected segments and reuse saved video ranges for all unchecked segments. Segment export + Rolling still delivers only selected segments.
+- Atomically maintain per-cache video provenance, stage/range metadata and file stamps after successful delivery. Reject missing, mismatched or modified unchecked results before sampling; never fall back to regeneration or mix first/final stages.
+- Add explicit 0.4.x full rolling manifest import when no indexed result exists. Preserve origin metadata and explain the older format’s identity-validation limits.
+- Assemble consecutive saved ranges with bounded FFmpeg buffers, frame-index cuts, continuous PCM timing and final video stream copy. Never build a full IMAGE tensor. Full exports are timeline_first_pass.mp4 or timeline_final.mp4.
+- Preserve unselected predecessor handoff records and saved video lengths; retain selected-segment continuity and strict per-segment seeds. Report full frame counts, generated/reused sources and seam-review boundaries.
+- Restore All/Segment selection in rolling UI, add bilingual scope explanations and an optional legacy manifest path. Retain manual-only Registry publishing. See docs/rolling-full-export.txt for migration, costs and validation.
+
 ## 0.4.1 — 2026-10-14
 
 - Release per-segment file-backed reference PCM again after deferred rolling export, including failures; preserve shared/global audio slots. Fix accumulation when source/fallback audio is rematerialized after sampling cleanup.
