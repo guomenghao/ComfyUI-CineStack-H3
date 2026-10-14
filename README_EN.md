@@ -14,6 +14,12 @@ Maintained by **guomenghao**. Source attribution and applicable licenses are doc
 - Independent `CineStackH3Director*` node IDs, HTTP routes and progress events, with legacy workflow conversion.
 - Upstream Refine, SelfLift, Semantic Bridge and FaceRefine capabilities.
 
+## Low RAM disk delivery (0.3.0)
+
+Enable **Low RAM · save to disk** in Director output settings. It persists selected clips and first-pass AV caches, retains predecessor continuity data until consumed, then releases old RGB storage. First/final stages merge from disk.
+Full IMAGE/AUDIO sockets are blocked in this mode; use the file paths and `manifest.json` in the report. Only checked segments are delivered. Fixed seeds and strict second-pass reuse remain supported. The toggle defaults off for legacy workflows.
+See [disk-mode details](docs/low-memory-mode.txt). Real GPU/server memory acceptance remains pending.
+
 ## Install
 
 Use a ComfyUI environment with official MiniMax H3 support (upstream minimum 0.30.0).
@@ -36,7 +42,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.2.1 includes the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.3.0 includes low-memory disk delivery plus the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

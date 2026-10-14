@@ -459,6 +459,11 @@ def finalize_director_outputs(
     export_pre_face_refine: bool = False,
     block_final_images: bool = False,
 ):
+    from ..director.execution_mode import low_memory_enabled
+    if low_memory_enabled(plan):
+        blocked = ExecutionBlocker(None)
+        count = sum(int(n) for n in (segment_frame_counts or []))
+        return blocked, blocked, float(plan.frame_rate), count, blocked, report, blocked, blocked
     is_batch = is_prompt_batch_timeline(plan.raw, plan.global_task_key)
     export_segments = plan.export_mode == "segments"
     video_batch = is_video_batch_task_key(plan.global_task_key)

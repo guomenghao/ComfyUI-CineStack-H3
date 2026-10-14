@@ -31,6 +31,7 @@ from .h3_motion_context import CONTINUITY_PIPELINE_ID, trim_context_prefix, trim
 from .plan import DirectorPlan, SegmentPlan, resolve_ref_image_size
 from .segment_seed import resolve_segment_seed, seed_from_group
 from .segment_loras import effective_lora_rows
+from .execution_mode import low_memory_enabled
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director.cache")
 
@@ -478,11 +479,16 @@ def _audio_payload_to_cpu(audio: dict[str, Any] | None) -> dict[str, Any] | None
     }
 
 
-def _frames_to_disk(tensor: torch.Tensor) -> torch.Tensor:
+def _frames_to_disk(tensor: torch.Tensor, *, bounded: bool = False) -> torch.Tensor:
     """Store pixel frames as uint8 [0,255]. Export is 8-bit anyway; float32 is 4× larger."""
     x = tensor.detach().cpu()
     if x.dtype == torch.uint8:
         return x.contiguous()
+    if bounded:
+        out = torch.empty(x.shape, dtype=torch.uint8, device="cpu")
+        for index in range(int(x.shape[0])):
+            out[index:index + 1] = _frames_to_disk(x[index:index + 1])
+        return out
     return x.float().clamp(0, 1).mul(255).round().clamp(0, 255).to(torch.uint8).contiguous()
 
 
@@ -602,10 +608,15 @@ def save_segment_cache(
       - False: write ``audio`` when present, otherwise **keep** existing audio.pt
         (phase-align trim re-save must not wipe a prior audio cache).
     """
+    strict = low_memory_enabled(plan)
     if not node_id:
+        if strict:
+            raise RuntimeError("低内存落盘：缺少缓存节点标识")
         return
     root = _cache_root(node_id)
     if root is None:
+        if strict:
+            raise RuntimeError("低内存落盘：缓存目录不可写")
         return
     fp = segment_cache_fingerprint(seg, plan)
     idx = seg.index
@@ -614,7 +625,7 @@ def save_segment_cache(
     handoff_path = root / f"seg_{idx:04d}.handoff.json"
     audio_path = root / f"seg_{idx:04d}.audio.pt"
     try:
-        payload = _frames_to_disk(tensor)
+        payload = _frames_to_disk(tensor, bounded=strict)
         _store_segment_frames(root, idx, payload, first_pass=False, plan=plan)
         text = json.dumps(fp, ensure_ascii=False, sort_keys=True)
         _write_via_temp(
@@ -649,6 +660,8 @@ def save_segment_cache(
             ),
         )
     except Exception as exc:
+        if strict:
+            raise RuntimeError(f"低内存落盘：第 {seg.timeline_index + 1} 段缓存保存失败：{exc}；未释放该段画面。") from exc
         # Xiangong / similar: RO mount or same-name write → skip cache, keep run alive.
         log.warning(
             "Segment %d cache write skipped (%s). Generation continues without disk cache.",
@@ -1041,13 +1054,18 @@ def save_first_pass_cache(
     handoff: dict[str, Any] | None = None,
     low_carry: dict | None = None,
 ) -> None:
-    """Persist first-pass AV latent for confirm-then-refine. Never raises."""
+    """Persist first-pass AV latent; low-memory mode raises on write failure."""
+    strict = low_memory_enabled(plan)
     if not node_id:
+        if strict:
+            raise RuntimeError("低内存落盘：缺少一采缓存节点标识")
         return
     if av_latent is None or not isinstance(av_latent, dict) or "samples" not in av_latent:
         return
     root = _cache_root(node_id)
     if root is None:
+        if strict:
+            raise RuntimeError("低内存落盘：一采缓存目录不可写")
         return
     fp = first_pass_cache_fingerprint(seg, plan)
     idx = seg.index
@@ -1069,8 +1087,12 @@ def save_first_pass_cache(
                 ),
             )
         if isinstance(frames, torch.Tensor) and frames.numel() > 0:
-            payload = _frames_to_disk(frames)
+            payload = _frames_to_disk(frames, bounded=strict)
             _store_segment_frames(root, idx, payload, first_pass=True, plan=plan)
+        else:
+            # A freshly sampled latent must never inherit an older seed's pixels.
+            _drop_legacy_frames(root, idx, first_pass=True)
+            _drop_ffv1_frames(root, idx, first_pass=True)
         if isinstance(low_carry, dict) and "samples" in low_carry:
             cpu_low = _av_latent_to_cpu(low_carry)
             _write_via_temp(low_path, lambda p: torch.save(cpu_low, p))
@@ -1083,6 +1105,8 @@ def save_first_pass_cache(
             fp.get("seed"),
         )
     except Exception as exc:
+        if strict:
+            raise RuntimeError(f"低内存落盘：第 {seg.timeline_index + 1} 段一采缓存保存失败：{exc}；未释放该段画面。") from exc
         log.warning(
             "Segment %d first-pass cache write skipped (%s).",
             idx + 1,

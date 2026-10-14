@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-10-14
+
+- Add opt-in `output.lowMemoryMode` (default off) across Director UI, external groups and packs. Existing positional widgets, node IDs and normal output behavior remain intact.
+- Deliver selected segments to disk, with atomic AV persistence before RGB decode, per-frame MP4 conversion, disk-only first/final merges and a manifest containing exact per-segment seeds.
+- Block full IMAGE/AUDIO sockets in disk mode; keep FPS/count/report outputs. Explicitly report file-only delivery and selected-only scope in Chinese and English.
+- Keep predecessor frames/AV/audio until continuity and phase trimming finish; apply the original seam operations per pair and release old full-frame storage. Flush intermediate refine passes without retaining their RGB batches.
+- Stop on cache/video write failure, unavailable FFmpeg or refinement failure in disk mode; retain successful first AV results even when later decoding fails. Never regenerate first passes on strict cache mismatch.
+- Remove redundant first-pass confirmation decode in disk mode; drop stale RGB previews when replacing an AV cache without pixels.
+- Add real codec, bounded storage, 22-frame continuity, seam pixel comparison, legacy compatibility and browser toggle regressions. See docs/low-memory-mode.txt for file layout, output semantics and hardware validation limits.
+
 ## 0.2.1 — 2026-10-14
 
 - Include active segment LoRA order, exact strengths and file size/mtime in first-pass and final cache identities. Empty/disabled stacks retain legacy metadata compatibility; old active-stack caches require an explicit first-pass rebuild.

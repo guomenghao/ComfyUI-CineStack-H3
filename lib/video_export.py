@@ -86,8 +86,11 @@ def write_frames_to_mp4(
     *,
     fps: float,
     audio: dict[str, Any] | None = None,
+    stream: bool = False,
 ) -> Path:
     """Write NHWC float frames to ``path`` as H.264 MP4. Raises on failure."""
+    if stream:
+        return _write_frames_streaming(path, frames, fps=fps, audio=audio)
     ffmpeg = _ffmpeg_bin()
     if not ffmpeg:
         raise RuntimeError(
@@ -192,3 +195,60 @@ def write_frames_to_mp4(
         return dest
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _write_frames_streaming(path, frames, *, fps, audio=None) -> Path:
+    """Keep only one RGB conversion buffer, with stderr on disk to avoid pipe deadlock."""
+    ffmpeg = _ffmpeg_bin()
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg unavailable; install imageio-ffmpeg or FFmpeg")
+    if not isinstance(frames, torch.Tensor) or frames.ndim != 4 or frames.shape[-1] < 3 or frames.shape[0] < 1:
+        raise ValueError("Expected nonempty NHWC RGB IMAGE tensor")
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    rate = float(fps)
+    if not np.isfinite(rate) or rate <= 0:
+        raise ValueError("fps must be finite and positive")
+    n, h, w, _ = frames.shape
+    with tempfile.TemporaryDirectory(prefix=".cinestack_encode_", dir=dest.parent) as temporary:
+        root = Path(temporary)
+        wav = root / "audio.wav"
+        has_audio = bool(audio) and _write_wav(wav, audio)
+        output = root / "video.mp4"
+        command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-threads", "2",
+                   "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{_even(w)}x{_even(h)}",
+                   "-r", f"{rate:.9f}", "-i", "pipe:0"]
+        if has_audio:
+            command += ["-i", str(wav)]
+        command += ["-c:v", "libx264", "-threads", "2", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "18"]
+        if has_audio:
+            command += ["-af", "apad", "-c:a", "aac", "-b:a", "192k", "-t", f"{n / rate:.9f}"]
+        else:
+            command += ["-an"]
+        command += ["-movflags", "+faststart", str(output)]
+        with (root / "ffmpeg.log").open("w+b") as errors:
+            proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors)
+            try:
+                for index in range(n):
+                    rgb = _pad_even_hw(_frames_to_rgb_u8(frames[index:index + 1]))
+                    proc.stdin.write(memoryview(np.ascontiguousarray(rgb)).cast("B"))
+                proc.stdin.close()
+                proc.stdin = None
+                proc.wait(timeout=3600)
+            except BaseException:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait()
+                errors.seek(0)
+                detail = errors.read().decode("utf-8", errors="replace")[-2000:]
+                if detail:
+                    log.error("Streaming MP4 encode: %s", detail)
+                raise
+            finally:
+                if proc.stdin is not None:
+                    proc.stdin.close()
+            if proc.returncode or not output.is_file() or output.stat().st_size == 0:
+                errors.seek(0)
+                raise RuntimeError("ffmpeg streaming encode failed: " + errors.read().decode("utf-8", errors="replace")[-2000:])
+        os.replace(output, dest)
+    return dest

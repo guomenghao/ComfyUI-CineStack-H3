@@ -14,5 +14,7 @@ CineStack modifications, 2026-10-13, maintained in guomenghao/ComfyUI-CineStack-
 
 - Cache, strict failure, queue concurrency, input validation and responsive-layout review fixes, 2026-10-14.
 
+- Opt-in low-memory disk delivery, bounded frame conversion, streaming merge and continuity-preserving release, 2026-10-14.
+
 Original copyright, license notices and acknowledgments remain applicable.
 This is an independent derivative; it is not an AIMixer or ComfyUI official product.

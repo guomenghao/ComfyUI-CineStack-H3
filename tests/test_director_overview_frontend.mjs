@@ -144,6 +144,15 @@ try {
   check((await page.locator('.cs-source').first().innerText()).includes('本段固定 · 0'),'zero is a fixed seed');
   await page.locator('.cs-mode select').selectOption('legacy');
   check(await page.evaluate(()=>JSON.parse(editor.timelineWidget.value).executionMode)==='legacy','legacy behavior selectable and serialized');
+  const lowMemory=page.locator('[data-r="out-low-memory"]');
+  check(!(await lowMemory.isChecked()),'old workflow defaults to normal memory behavior');
+  await lowMemory.check();
+  check(await page.evaluate(()=>JSON.parse(editor.timelineWidget.value).output.lowMemoryMode)===true,'disk mode persists in timeline JSON');
+  check(await page.locator('[data-r="out-export-mode"]').isDisabled(),'disk mode makes its file-delivery behavior explicit');
+  check((await page.locator('.cs-message').innerText()).includes('IMAGE/AUDIO'),'disk mode explains blocked media sockets');
+  await lowMemory.uncheck();
+  check(!(await page.locator('[data-r="out-export-mode"]').isDisabled()),'disabling disk mode restores legacy export controls');
+  await lowMemory.check();
   await page.locator('.cs-row').nth(3).locator('.cs-title').click();
   check(await page.evaluate(()=>editor.selectedIndex)===3,'overview navigates existing segment editor');
   await page.evaluate(()=>{editor.selectedIndex=0;editor.renderImageBatchGroups()});
@@ -162,7 +171,8 @@ try {
   const modeChecks=await page.evaluate(async()=>{
     const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
     const {setLocale}=await import('/web/js/minimax_i18n.js');
-    setLocale('en');check(editor.overview.root.textContent.includes('Segment workbench'),'overview follows English locale');setLocale('zh');
+    setLocale('en');check(editor.overview.root.textContent.includes('Segment workbench'),'overview follows English locale');
+    check(editor.root.textContent.includes('Low RAM'),'disk-mode label follows English locale');setLocale('zh');
     const raw={version:5,timelineMode:'fl2v',editMode:'segment',frameRate:24,global:{taskType:'fl2v'},
       output:{mode:'fixed',width:864,height:480,audioMode:'generate'},
       shots:[{id:'s1',durationSec:5,prompt:'first',first_pass_seed:'0'},{id:'s2',durationSec:5,prompt:'second',first_pass_seed:'200'}]};

@@ -2,7 +2,14 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-## 导演台分段工作台（0.2.1）
+## 低内存落盘（0.3.0）
+
+在输出设置中勾选 **低内存落盘**，逐段保存视频和一采缓存，保留必要的上一段连贯数据后释放旧段画面；从磁盘分别合并一采/成片。
+**此模式只交付本轮勾选段，并阻断完整 IMAGE/AUDIO 输出口。** 视频和 `manifest.json` 位于报告中的 `output/minimax_seg_export/时间戳/`；下游无需再用 CreateVideo/SaveVideo 保存。
+每段独立 seed、仅二采和 22 帧连贯保留。开关默认关闭，关闭后继续原导出方式；已有工作流不会自动改变。
+详见 [低内存使用说明](docs/low-memory-mode.txt)。
+
+## 导演台分段工作台
 
 导演台内可统一浏览每段缩略图、计划帧数/时长、生效一采 seed 和缓存状态，直接点击片段进入原编辑区。
 seed 留空继承全局，填写数字固定本段；“固定当前值”将继承值保存为分段 seed。总览和原卡片输入即时同步。
@@ -87,7 +94,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.2.1` 包含分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.3.0` 包含低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

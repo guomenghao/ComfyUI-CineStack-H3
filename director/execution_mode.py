@@ -2,6 +2,15 @@
 from __future__ import annotations
 
 
+def low_memory_enabled(plan) -> bool:
+    output = (getattr(plan, "raw", None) or {}).get("output") or {}
+    return output.get("lowMemoryMode", False) is True
+
+
+def disk_export_enabled(plan) -> bool:
+    return low_memory_enabled(plan) or getattr(plan, "export_mode", "all") == "segments"
+
+
 def director_execution_mode(plan) -> str:
     mode = str((getattr(plan, "raw", None) or {}).get("executionMode") or "legacy")
     if mode not in {"legacy", "first_pass", "refine_only"}:

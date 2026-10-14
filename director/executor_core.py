@@ -99,9 +99,12 @@ from .segment_continuity import (
     is_continue_mode,
     is_continuity_active,
     match_export_opening_grade,
+    prepare_export_seam,
     resolve_prev_segment_output,
 )
 from .vram_cleanup import cleanup_segment_vram
+from .execution_mode import low_memory_enabled
+from .low_memory import LowMemoryRun, validate_low_memory, ram_snapshot
 
 from .refine_only import validate_refine_only_cache
 from .segment_seed import resolve_segment_seed
@@ -117,7 +120,7 @@ def _segment_disk_cache_needed(
     hold_after_first: bool,
 ) -> bool:
     """Disk cache is for partial re-run / refine / continuity — not single-shot r2v."""
-    if will_refine or hold_after_first:
+    if low_memory_enabled(plan) or will_refine or hold_after_first:
         return True
     from .face_refine.pack import face_refine_enabled
     from .selflift.pack import selflift_enabled as _selflift_on
@@ -339,9 +342,9 @@ def _prune_continuity_working_set(
                 working_set.pop(index, None)
 
 
-def _poster_frame(tensor: torch.Tensor | None) -> torch.Tensor:
+def _poster_frame(tensor: torch.Tensor | None, *, tiny: bool = False) -> torch.Tensor:
     """1-frame stand-in so IMAGE list length stays valid after a pixel release."""
-    if not isinstance(tensor, torch.Tensor) or tensor.ndim != 4 or int(tensor.shape[0]) <= 0:
+    if tiny or not isinstance(tensor, torch.Tensor) or tensor.ndim != 4 or int(tensor.shape[0]) <= 0:
         # Even 2x2: 1x1 yuv420p from CreateVideo is rejected by Windows Movies & TV.
         return torch.full((1, 2, 2, 3), 0.5)
     if int(tensor.shape[0]) == 1:
@@ -360,6 +363,7 @@ def _release_segment_pixels(
     progress_pos: dict[int, int],
     completed_pre_face: dict[int, torch.Tensor] | None = None,
     segment_pre_face: list[torch.Tensor] | None = None,
+    tiny: bool = False,
 ) -> bool:
     """Drop full-resolution pixels for a finished predecessor. Audio stays.
 
@@ -377,21 +381,21 @@ def _release_segment_pixels(
     had = chunk is not None or pre is not None or pre_face is not None
     if run_pos is not None and run_pos < len(segment_outputs):
         src = chunk if chunk is not None else segment_outputs[run_pos]
-        poster = _poster_frame(src)
+        poster = _poster_frame(src, tiny=tiny)
         segment_outputs[run_pos] = poster
         if run_pos < len(segment_pre_refine):
             if pre is chunk:
                 segment_pre_refine[run_pos] = poster
             else:
                 segment_pre_refine[run_pos] = _poster_frame(
-                    pre if pre is not None else segment_pre_refine[run_pos]
+                    pre if pre is not None else segment_pre_refine[run_pos], tiny=tiny
                 )
         if segment_pre_face is not None and run_pos < len(segment_pre_face):
             if pre_face is chunk:
                 segment_pre_face[run_pos] = poster
             else:
                 segment_pre_face[run_pos] = _poster_frame(
-                    pre_face if pre_face is not None else segment_pre_face[run_pos]
+                    pre_face if pre_face is not None else segment_pre_face[run_pos], tiny=tiny
                 )
         had = True
     elif chunk is not None or pre is not None or pre_face is not None:
@@ -453,6 +457,7 @@ def execute_director_plan_core(
     from .execution_mode import apply_director_execution_mode
 
     execution_mode = apply_director_execution_mode(plan)
+    low_memory = low_memory_enabled(plan)
     node_id = resolve_segment_cache_key(cache_name, node_id)
     plan.sample_seed = int(seed)
     plan.sample_cfg = float(cfg)
@@ -475,6 +480,8 @@ def execute_director_plan_core(
     # Strict preflight must precede pruning, export creation and any sampling.
     if refine_only_enabled(plan):
         validate_refine_only_cache(node_id, plan)
+    if low_memory:
+        validate_low_memory(plan, node_id)
 
     # Drop caches for deleted/shortened timelines. Use every segment index (not
     # run_indices): unselected「选择运行」slots still fill merge/export from disk.
@@ -524,6 +531,9 @@ def execute_director_plan_core(
     # One timestamp folder per execute so all segments of this run stay together.
     mp4_run_dir = new_segment_mp4_run_dir(plan)
     plan.segment_mp4_run_dir = str(mp4_run_dir) if mp4_run_dir is not None else None
+    disk_run = LowMemoryRun(plan, mp4_run_dir) if low_memory else None
+    if low_memory:
+        reports.append("RAM: 低内存落盘已开启；本轮选中段逐段保存，禁止整片 IMAGE/AUDIO 张量输出。")
     if mp4_run_dir is not None:
         reports.append(f"Segment mp4 export dir: {mp4_run_dir}")
     if live_tae_preview:
@@ -620,7 +630,7 @@ def execute_director_plan_core(
     # True export lengths (post continuity trim). Kept after「分段导出」
     # replaces older IMAGE slots with 1-frame posters.
     segment_export_lengths: dict[int, int] = {}
-    export_segments_mode = plan.export_mode == "segments"
+    export_segments_mode = plan.export_mode == "segments" or low_memory
 
     def _run_one_segment(
         seg, *, progress_index: int
@@ -1065,7 +1075,9 @@ def execute_director_plan_core(
                             replace_audio=False,
                         )
                         # Rewrite incremental mp4 so mid-run files match trimmed length.
-                        if hold_after_first:
+                        previous_hold = (disk_run.entries.get(prev_idx, {}).get("hold", hold_after_first)
+                                         if disk_run else hold_after_first)
+                        if previous_hold:
                             pre_path = maybe_export_segment_mp4(
                                 mp4_run_dir,
                                 plan,
@@ -1089,6 +1101,8 @@ def execute_director_plan_core(
                                     else None
                                 ),
                             )
+                        if disk_run:
+                            disk_run.trim_previous(prev_seg, int(prev_chunk.shape[0]))
                         extra_passes = list(completed_refine_passes.get(prev_idx) or [])
                         rewritten_extra: list[tuple[str, torch.Tensor]] = []
                         for suffix, frames in extra_passes:
@@ -1289,10 +1303,19 @@ def execute_director_plan_core(
 
         first_pass_samples = samples
         completed_first_pass_av[seg.index] = first_pass_samples
+        if low_memory and not skip_first_sample:
+            # Persist the expensive AV result before allocating decoded RGB.
+            save_first_pass_cache(node_id, seg, plan, av_latent=first_pass_samples,
+                low_carry=completed_low_carry.get(seg.index),
+                handoff={"trim_frames": int(trim_frames),
+                         "export_frames": int(continuity_export_len(trim_frames=trim_frames,
+                             sample_len=sample_len, visible_frames=num_frames, target_len=target_len,
+                             keep_tail=bool(getattr(plan, "continuity_keep_tail", True)))),
+                         "sample_frames": int(sample_len), "official_mc_length": False})
         first_pass_gpu = None
         pre_export = None
         run_refine = will_refine and not hold_after_first
-        if will_refine:
+        if will_refine and not (low_memory and hold_after_first):
             cached_frames = pre_cache.get("frames") if skip_first_sample else None
             if isinstance(cached_frames, torch.Tensor) and cached_frames.numel() > 0:
                 pre_export = cached_frames.detach().cpu().float()
@@ -1309,6 +1332,8 @@ def execute_director_plan_core(
                     )
                     pre_export = first_pass_gpu.detach().cpu().float()
                 except Exception as exc:
+                    if low_memory:
+                        raise RuntimeError(f"低内存落盘：第 {ui_idx + 1} 段一采画面解码失败；已保存一采 latent：{exc}") from exc
                     log.warning(
                         "Segment %s first-pass decode for images_pre_refine failed (%s).",
                         ui_idx + 1,
@@ -1342,7 +1367,7 @@ def execute_director_plan_core(
             keep_tail=bool(getattr(plan, "continuity_keep_tail", True)),
         )
         if (will_refine or continuity_active or run_face_refine or selflift_enabled(plan)
-                or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample:
+                or seg.first_pass_seed is not None or execution_mode == "first_pass") and not skip_first_sample and not low_memory:
             save_first_pass_cache(
                 node_id,
                 seg,
@@ -1388,13 +1413,16 @@ def execute_director_plan_core(
                     audio_p if isinstance(audio_p, dict) else None,
                     suffix=suffix,
                 )
-                pass_clips.append((suffix, frames_p))
+                if not low_memory:
+                    pass_clips.append((suffix, frames_p))
                 if path:
                     reports.append(
                         f"Segment {ui_idx + 1}/{timeline_seg_total}: "
                         f"{mp4_export_kind(path)} saved → {path}"
                     )
             except Exception as exc:
+                if low_memory:
+                    raise
                 log.warning(
                     "Segment %s refine pass %d mp4 export failed (%s).",
                     ui_idx + 1,
@@ -1494,6 +1522,10 @@ def execute_director_plan_core(
             pre_chunk = chunk
         if trim_frames > 0 and prev_idx >= 0 and is_continuity_active(plan, seg):
             prev_export = completed_outputs.get(prev_idx)
+            if low_memory and hold_after_first:
+                first_tail = completed_pre_refine.get(prev_idx)
+                if first_tail is not None:
+                    prev_export = first_tail
             if prev_export is not None and int(prev_export.shape[0]) >= 1:
                 same_pre = pre_chunk is chunk
                 chunk = match_export_opening_grade(chunk, prev_export)
@@ -1507,7 +1539,7 @@ def execute_director_plan_core(
                     if prev_pre is None or int(prev_pre.shape[0]) < 1:
                         prev_pre = prev_export
                     pre_chunk = match_export_opening_grade(pre_chunk, prev_pre)
-        if hold_after_first and pre_chunk is chunk:
+        if hold_after_first and pre_chunk is chunk and not low_memory:
             pre_chunk = chunk.clone()
         decode_s = time.perf_counter() - t_decode
         pre_face_chunk = chunk
@@ -1585,6 +1617,46 @@ def execute_director_plan_core(
             )
             if not run_refine:
                 pre_chunk = chunk
+        if low_memory and plan.continuity_enabled and prev_idx in resampled_this_run:
+            # Run the original whole-concat seam treatment on this adjacent
+            # pair before either clip is released. Never build a full timeline.
+            stages = [(completed_outputs, segment_outputs, chunk),
+                      (completed_pre_refine, segment_pre_refine, pre_chunk),
+                      (completed_pre_face, segment_pre_face, pre_face_chunk)]
+            pairs, corrected = {}, []
+            for completed, output_list, current_frames in stages:
+                previous_frames = completed.get(prev_idx)
+                if previous_frames is None:
+                    corrected.append(current_frames)
+                    continue
+                key = (id(previous_frames), id(current_frames))
+                if key not in pairs:
+                    pairs[key] = prepare_export_seam(previous_frames, current_frames)
+                previous_fixed, current_fixed = pairs[key]
+                completed[prev_idx] = previous_fixed
+                position = progress_pos.get(prev_idx)
+                if position is not None:
+                    output_list[position] = previous_fixed
+                corrected.append(current_fixed)
+            chunk, pre_chunk, pre_face_chunk = corrected
+            previous_seg = all_segments[prev_idx]
+            previous_frames = completed_outputs[prev_idx]
+            save_segment_cache(node_id, previous_seg, plan, previous_frames,
+                av_latent=completed_av_latents.get(prev_idx), handoff=completed_av_handoff.get(prev_idx),
+                audio=completed_audios.get(prev_idx), replace_audio=False)
+            if disk_run.entries[prev_idx]["hold"]:
+                maybe_export_segment_mp4(mp4_run_dir, plan, previous_seg, previous_frames,
+                                         completed_audios.get(prev_idx), suffix="pre")
+            else:
+                maybe_export_segment_mp4s(mp4_run_dir, plan, previous_seg, previous_frames,
+                    completed_audios.get(prev_idx), pre_frames=completed_pre_refine.get(prev_idx),
+                    pre_face_frames=completed_pre_face.get(prev_idx) if export_pre_face_refine else None)
+                previous_passes = disk_run.entries[prev_idx].get("refine_passes", 1)
+                if previous_passes > 1:
+                    copy_segment_mp4_suffix(mp4_run_dir, plan, previous_seg,
+                                            dest_suffix=f"p{previous_passes}")
+            # Pair-processing temporaries must not retain old full-frame storage.
+            del stages, pairs, corrected, previous_frames, previous_fixed, current_fixed, current_frames
         handoff = {
             "trim_frames": int(trim_frames),
             "export_frames": int(chunk.shape[0]),
@@ -1658,6 +1730,11 @@ def execute_director_plan_core(
                 f"{mp4_export_kind(mp4_path)} saved → {mp4_path}"
             )
 
+        if disk_run:
+            disk_run.record(seg, chunk, pre_chunk, hold=hold_after_first,
+                            first_only=execution_mode == "first_pass", refined=run_refine,
+                            face_refined=run_face_refine and not hold_after_first, refine_passes=n_refine)
+
         if clear_vram_between_segments and progress_index < seg_total - 1:
             cleanup_segment_vram(enabled=True)
 
@@ -1689,6 +1766,8 @@ def execute_director_plan_core(
             completed_low_carry,
             completed_refine_passes,
         )
+        if low_memory:
+            _prune_continuity_working_set(seg.index, completed_audios, completed_av_handoff)
         if export_segments_mode:
             # Older than the predecessor cannot be pinned anymore. The last run
             # segment is the clip the IMAGE outputs carry: this loop also walks
@@ -1706,6 +1785,7 @@ def execute_director_plan_core(
                         progress_pos=progress_pos,
                         completed_pre_face=completed_pre_face,
                         segment_pre_face=segment_pre_face,
+                        tiny=low_memory,
                     )
         if seg.index in run_indices:
             if clear_vram_between_segments and segment_outputs:
@@ -1719,7 +1799,7 @@ def execute_director_plan_core(
             segment_outputs.append(chunk)
             segment_pre_refine.append(pre_chunk)
             segment_pre_face.append(pre_face_chunk)
-            segment_audios.append(audio_dict or {})
+            segment_audios.append({} if low_memory else (audio_dict or {}))
             segment_export_lengths[seg.index] = int(chunk.shape[0])
             resampled_this_run.add(seg.index)
             if export_segments_mode and seg.index > 0:
@@ -1734,15 +1814,26 @@ def execute_director_plan_core(
                     progress_pos=progress_pos,
                     completed_pre_face=completed_pre_face,
                     segment_pre_face=segment_pre_face,
+                    tiny=low_memory,
                 )
-            if plan.export_mode == "all":
+            if low_memory:
+                # A model clone carrying per-segment LoRAs must not live for the
+                # whole timeline. Unload before dropping patcher references.
+                cleanup_segment_vram(enabled=True, unload_models=True)
+                shift_cache.clear()
+                rss = ram_snapshot()
+                log.info("CineStack RAM: segment %d saved; previous pixels released; RSS=%s MiB",
+                         seg.timeline_index + 1, "n/a" if rss is None else f"{rss / 1024**2:.1f}")
+                # Loop locals otherwise keep the last full clip alive after maps are pruned.
+                del chunk, pre_chunk, pre_face_chunk, audio_dict
+            elif plan.export_mode == "all":
                 output_chunks.append(chunk)
                 output_pre_chunks.append(pre_chunk)
                 output_pre_face_chunks.append(pre_face_chunk)
                 output_segments.append(seg)
             continue
 
-        if plan.export_mode != "all":
+        if low_memory or plan.export_mode != "all":
             continue
 
         # Prefer exact cache; pipeline-stale disk render is ok. A different
@@ -1842,6 +1933,27 @@ def execute_director_plan_core(
 
     if not output_chunks and not segment_outputs:
         raise ValueError("Director plan produced no segments.")
+
+    if disk_run:
+        # Continuity/phase trimming has finished. All media is durable now;
+        # release the final working set before invoking the disk-only merger.
+        for index in tuple(completed_outputs):
+            _release_segment_pixels(index, completed_outputs=completed_outputs,
+                completed_pre_refine=completed_pre_refine, completed_refine_passes=completed_refine_passes,
+                segment_outputs=segment_outputs, segment_pre_refine=segment_pre_refine, progress_pos=progress_pos,
+                completed_pre_face=completed_pre_face, segment_pre_face=segment_pre_face, tiny=True)
+        for working_set in (completed_av_latents, completed_first_pass_av, completed_low_carry,
+                            completed_audios, completed_av_handoff):
+            working_set.clear()
+        segment_audios.clear()
+        gc.collect()
+        reports.extend(disk_run.finish())
+        report_director_finish(progress_node_id, seg_total)
+        shift_cache.clear()
+        poster = torch.full((1, 2, 2, 3), 0.5)
+        return (poster, segment_outputs, [], "\n".join(reports),
+                [segment_export_lengths[i] for i in run_list], poster, segment_pre_refine,
+                held_for_confirmation, None, [])
 
     report_director_finish(progress_node_id, seg_total)
     export_chunks = output_chunks if output_chunks else segment_outputs

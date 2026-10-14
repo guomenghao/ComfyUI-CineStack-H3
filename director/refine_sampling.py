@@ -1132,6 +1132,9 @@ def apply_segment_refine(
                 try:
                     on_pass(i + 1, n_passes, work)
                 except Exception as exc:
+                    from .execution_mode import low_memory_enabled
+                    if low_memory_enabled(plan):
+                        raise
                     log.warning(
                         "Segment %s refine pass %d hook failed (%s).",
                         int(getattr(seg, "index", 0)) + 1,
@@ -1142,10 +1145,12 @@ def apply_segment_refine(
             on_phase("refine", 1)
         return work, "refine " + ", ".join(note_parts)
     except Exception as exc:
-        if refine_only_enabled(plan):
+        from .execution_mode import low_memory_enabled
+        if refine_only_enabled(plan) or low_memory_enabled(plan):
             index = int(getattr(seg, "timeline_index", getattr(seg, "index", 0))) + 1
+            label = "仅二采" if refine_only_enabled(plan) else "低内存落盘"
             raise RuntimeError(
-                f"仅二采已停止：第 {index} 段二采失败：{exc}；未回退为一采结果，未重跑一采。"
+                f"{label}已停止：第 {index} 段二采失败：{exc}；未回退为一采结果，未重跑一采。"
             ) from exc
         log.warning(
             "Segment %s refine failed (%s); keeping %s.",

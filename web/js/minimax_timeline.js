@@ -3086,6 +3086,10 @@ class CineStackH3DirectorEditor {
                 <option value="all" data-i18n="output.exportMode.all">全部导出</option>
                 <option value="segments" data-i18n="output.exportMode.segments">分段导出</option>
             </select>
+            <label data-i18n-title="tooltip.lowMemoryMode">
+                <input type="checkbox" data-r="out-low-memory">
+                <span data-i18n="output.lowMemoryMode">低内存落盘</span>
+            </label>
             <span class="hidden" data-r="out-max-frames-wrap" hidden aria-hidden="true">
                 <label data-i18n="output.maxFrames">最大帧数</label>
                 <input type="number" class="bd-num" data-r="out-max-frames" min="0" max="999999" step="1" value="0" style="width:64px">
@@ -3448,6 +3452,7 @@ class CineStackH3DirectorEditor {
         this.exportPreFaceRefineCb = this.root.querySelector('[data-r="out-export-preface"]');
         this.outMaxFrames = this.root.querySelector('[data-r="out-max-frames"]');
         this.outExportMode = this.root.querySelector('[data-r="out-export-mode"]');
+        this.outLowMemory = this.root.querySelector('[data-r="out-low-memory"]');
         this.segmentContinuityWrap = this.root.querySelector('[data-r="segment-continuity-wrap"]');
         this.segmentContinuityCb = this.root.querySelector('[data-r="segment-continuity-cb"]');
         this.segmentContinuityOverlap = this.root.querySelector('[data-r="segment-continuity-overlap"]');
@@ -3765,6 +3770,7 @@ class CineStackH3DirectorEditor {
         };
         this.outMaxFrames.onchange = () => this.onOutputField("maxExportFrames", +this.outMaxFrames.value);
         this.outExportMode.onchange = () => this.onOutputField("exportMode", this.outExportMode.value);
+        this.outLowMemory.onchange = () => this.onOutputField("lowMemoryMode", this.outLowMemory.checked);
         if (this.outAudioMode) {
             this.outAudioMode.onchange = () => this.onOutputField("audioMode", this.outAudioMode.value);
         }
@@ -4433,7 +4439,7 @@ class CineStackH3DirectorEditor {
             this.runSelectSummary.style.color = "#aaa";
         } else {
             const nums = (this.timeline.runSelection || []).map((i) => i + 1).join(", ");
-            const exportHint = this.timeline.output?.exportMode === "segments"
+            const exportHint = this.timeline.output?.exportMode === "segments" || this.timeline.output?.lowMemoryMode
                 ? t("runSelect.exportOnlyChecked")
                 : t("runSelect.fillUnchecked");
             this.runSelectSummary.textContent = count === 1
@@ -6615,6 +6621,9 @@ class CineStackH3DirectorEditor {
         if (this.outH) this.outH.value = String(out.height ?? 480);
         if (this.outMaxFrames) this.outMaxFrames.value = String(out.maxExportFrames ?? 0);
         if (this.outExportMode) this.outExportMode.value = out.exportMode === "segments" ? "segments" : "all";
+        if (this.outLowMemory) this.outLowMemory.checked = out.lowMemoryMode === true;
+        if (this.outExportMode) this.outExportMode.disabled = out.lowMemoryMode === true;
+        if (this.exportSourceImagesCb) this.exportSourceImagesCb.disabled = out.lowMemoryMode === true;
         if (this.outAudioMode) {
             const am = normalizeAudioMode(out.audioMode);
             this.outAudioMode.value = am;
@@ -7006,6 +7015,8 @@ class CineStackH3DirectorEditor {
             this.timeline.output.maxExportFrames = Number.isFinite(n) && n > 0 ? n : 0;
         } else if (key === "exportMode") {
             this.timeline.output.exportMode = value === "segments" ? "segments" : "all";
+        } else if (key === "lowMemoryMode") {
+            this.timeline.output.lowMemoryMode = value === true;
         } else if (key === "audioMode") {
             this.timeline.output.audioMode = normalizeAudioMode(value);
         } else if (key === "continuityEnabled") {

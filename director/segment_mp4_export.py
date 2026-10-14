@@ -1,7 +1,7 @@
 # Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 """Incremental per-segment MP4 export for「分段导出」runs.
 
-Best-effort: encode failures must never abort generation. Each run uses a
+Legacy export is best-effort; low-memory mode stops on write failures. Each run uses a
 timestamp folder: ``output/minimax_seg_export/<YYYYMMDD_HHMMSS>/``.
 
 Files:
@@ -25,6 +25,7 @@ import torch
 
 from .audio_export import prepare_segment_audio_for_file_export
 from .plan import DirectorPlan, SegmentPlan
+from .execution_mode import disk_export_enabled, low_memory_enabled
 
 log = logging.getLogger("ComfyUI-CineStack-H3.director.mp4_export")
 
@@ -36,7 +37,7 @@ def new_segment_mp4_run_dir(plan: DirectorPlan) -> Path | None:
 
     Returns None when not in segments mode or the output dir is unavailable.
     """
-    if getattr(plan, "export_mode", "all") != "segments":
+    if not disk_export_enabled(plan):
         return None
     try:
         base = Path(folder_paths.get_output_directory()) / "minimax_seg_export"
@@ -54,6 +55,8 @@ def new_segment_mp4_run_dir(plan: DirectorPlan) -> Path | None:
         log.info("CineStack H3 Director segment mp4 run dir: %s", root)
         return root
     except OSError as exc:
+        if low_memory_enabled(plan):
+            raise RuntimeError(f"低内存落盘：无法创建视频目录：{exc}") from exc
         log.warning("Segment mp4 export dir unavailable (%s); skipped.", exc)
         return None
 
@@ -107,7 +110,7 @@ def maybe_export_segment_mp4(
     *,
     suffix: str = "",
 ) -> str | None:
-    """Write one segment mp4 into ``run_dir``. Never raises.
+    """Write one segment mp4; raises on failure in low-memory mode.
 
     ``suffix="pre"`` writes the first-pass clip (``seg_XXXX_pre.mp4``).
     ``suffix="facepre"`` writes the clip before FaceRefine stitch.
@@ -115,7 +118,7 @@ def maybe_export_segment_mp4(
 
     Returns the absolute path string on success, otherwise None.
     """
-    if run_dir is None or getattr(plan, "export_mode", "all") != "segments":
+    if run_dir is None or not disk_export_enabled(plan):
         return None
     task = str(getattr(seg, "task_key", "") or getattr(plan, "global_task_key", "") or "")
     if task not in VIDEO_EXPORT_TASKS:
@@ -139,6 +142,7 @@ def maybe_export_segment_mp4(
             frames.detach().cpu().float(),
             fps=float(getattr(plan, "frame_rate", 24) or 24),
             audio=audio,
+            stream=low_memory_enabled(plan),
         )
         log.info(
             "CineStack H3 Director segment #%d %smp4 saved: %s",
@@ -148,6 +152,8 @@ def maybe_export_segment_mp4(
         )
         return str(path)
     except Exception as exc:
+        if low_memory_enabled(plan):
+            raise RuntimeError(f"低内存落盘：第 {seg.timeline_index + 1} 段视频保存失败：{exc}；已停止释放画面。") from exc
         log.warning(
             "Segment #%d %smp4 export failed (generation continues): %s",
             int(seg.index) + 1,
@@ -197,7 +203,7 @@ def copy_segment_mp4_suffix(
     dest_suffix: str,
 ) -> str | None:
     """Copy ``seg_XXXX.mp4`` to ``seg_XXXX_<suffix>.mp4``. Never raises."""
-    if run_dir is None or getattr(plan, "export_mode", "all") != "segments":
+    if run_dir is None or not disk_export_enabled(plan):
         return None
     tag = _safe_mp4_suffix(dest_suffix)
     if not tag:
@@ -216,6 +222,8 @@ def copy_segment_mp4_suffix(
         )
         return str(dest)
     except Exception as exc:
+        if low_memory_enabled(plan):
+            raise RuntimeError(f"低内存落盘：精修视频副本保存失败：{exc}") from exc
         log.warning(
             "Segment #%d copy to %s failed: %s",
             int(seg.index) + 1,
