@@ -122,3 +122,42 @@ def cleanup_segment_vram(*, enabled: bool = True, unload_models: bool = True) ->
         log.debug("CineStack H3 Director: segment VRAM cleanup (models unloaded, cache cleared)")
     else:
         log.debug("CineStack H3 Director: segment VRAM cleanup (cache cleared, models kept loaded)")
+
+
+def release_models_for_export() -> dict:
+    """End of inference: unload through Comfy, then discard reloadable host pins.
+
+    Keep strong patcher references across unload (the manager may remove its
+    records). Never touch weight dictionaries, mmap backing files or disk caches.
+    Older static patchers have a no-op partially_unload_ram implementation.
+    """
+    result = {"status": "unavailable", "released_host_bytes": 0}
+    try:
+        import comfy.model_management as mm
+        buffers = cleanup_sampling_buffers()
+        if buffers.get("error") or buffers.get("cast_buffers") in {"failed", "unsupported"}:
+            return {**result, "status": "buffer_cleanup_failed"}
+        patchers = [r.model for r in getattr(mm, "current_loaded_models", ())
+                    if getattr(r, "model", None) is not None]
+        mm.unload_all_models()
+        # Complete outstanding device work before truncating host buffers.
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        seen = set()
+        for patcher in patchers:
+            if id(patcher) in seen:
+                continue
+            seen.add(id(patcher))
+            release = getattr(patcher, "partially_unload_ram", None)
+            if callable(release):
+                result["released_host_bytes"] += int(release(1e32) or 0)
+        mm.soft_empty_cache()
+        result["status"] = "released"
+    except ImportError:
+        return result
+    except Exception as exc:
+        result.update(status="failed", error=type(exc).__name__)
+        log.warning("Export model handoff cleanup failed: %s", exc)
+    gc.collect()
+    return result

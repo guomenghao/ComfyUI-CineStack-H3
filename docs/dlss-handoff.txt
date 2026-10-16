@@ -1,0 +1,16 @@
+影栈 0.6.9 / DLSS-NeuralRender-Linux 0.2.0
+
+两个插件都必须更新并重启 ComfyUI。不发布 Registry，不修改已有缓存、seed 或采样模式。
+
+普通接线：导演台 images → CreateVideo → DLSS SR → DLSS NR → SaveVideo。
+旧接线可继续用。DLSS output_mode=auto 且 images 输出无人连接时，返回文件 VIDEO；连接 IMAGE 输出时，为兼容旧节点保留一个完整 float32 结果。自动模式会把连接方式纳入缓存判断。
+
+更低内存接线：全部导出＋滚动生成，导演台 final_video → DLSS video；first_pass_video → 另一个 SaveVideo。不要通过 LoadVideo/get_components 把文件再次变成整片 IMAGE。确认一采期间 final_video 保持阻断；仅二采不会补跑一采。
+
+普通模式保留 IMAGE 输出意味着一采、最终整片画面仍然占用内存；本次移除的是合并完成后重复留存的分段存储，并在合并前释放可重载模型缓冲。不会承诺任意长度的普通模式都能装入 64 GiB。滚动模式才能避免导演台输出整片画面张量。
+
+DLSS 0.2.0：一条视频使用同一 worker，逐帧转换/读取/编码，保持光流历史。VIDEO 输出在 ComfyUI temp/dlss_stream，接 SaveVideo 才成为永久文件。SDR RGB 使用无损 H.264 中间编码，HDR 使用 10-bit 4:4:4 H.264 并保留 PQ/HLG 标记；音频按原采样率/声道编码 AAC。编码需要 CPU 和临时磁盘，不能保证比旧路径更快；Linux files 传输仍需要整片原始输入/输出磁盘空间，但不会将它们全部读入 RAM。
+
+观察日志：export_model_release_after 的 status / released_host_bytes；export_frame_handoff_after；DLSS memory input_before / worker_before / encode_progress / worker_after / file_video_ready。旧版静态模型没有可释放的动态 pins 时返回 0，不删除模型或缓存文件。
+
+工作流中的 NvidiaDLSSFrameInterpolation 上游源码已检查：接受文件源，逐帧解码，输出文件 VIDEO；没有改动该第三方插件。部署版本及 GPU 实跑仍需服务器确认。帧插值、DLSS 模型质量和真实 NVENC/Wine 驱动运行不是 CPU 测试能保证的。

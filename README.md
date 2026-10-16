@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.8** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.9** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 导演台 → DLSS 内存交接（0.6.9）
+
+生成完成后，先通过 ComfyUI 卸载模型并释放可重新加载的动态 host/pinned 缓冲，再合并视频；合并后的分段输出共享整片存储，避免下游缓存再保留一套分段像素。阶段日志新增 `export_model_release_*` 和 `export_frame_handoff_after`。
+
+配合 [DLSS 插件 0.2.0](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux)，只连接 DLSS 的 VIDEO 输出时自动逐帧处理并输出文件视频。普通 IMAGE 工作流仍保留整片张量；需要随段数保持较低内存时，使用「全部导出＋滚动生成」，将导演台 `final_video` 直接接到 DLSS `video`，`first_pass_video` 单独接 SaveVideo。详见 [交接说明](docs/dlss-handoff.txt)。
 
 ## 普通全部导出内存修复（0.6.8）
 
@@ -170,7 +176,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.8` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.9` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.9 — 2026-10-16
+
+- End-of-inference model handoff: drain internal sampler buffers, unload via ComfyUI, synchronize and release reloadable host pins before export allocations.
+- Normal merged IMAGE exports return segment views into merged storage, avoiding duplicate retention in the downstream node cache. Source and first-pass cache files remain unchanged.
+- Added model-release and frame-handoff diagnostics; rolling, seeds, strict refine and connected boundaries retain existing interfaces.
+- Companion DLSS 0.2.0 streams VIDEO-only output through one worker and a frame-sized encoder. No Registry release.
+
 ## 0.6.8 — 2026-10-16
 
 - Fix standard All export seam/concatenation peaks: allocate one destination, copy each native-size clip into its centered output view, then correct seams in owned storage. Avoid whole-clip additive-luma clones and the accumulated corrected-clip list. Preserve source/cache tensors, mixed-size/dtype behavior, disconnected boundaries and output layout.

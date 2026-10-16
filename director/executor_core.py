@@ -105,7 +105,7 @@ from .segment_continuity import (
     export_frame_view_key,
     owned_export_seam_pairs,
 )
-from .vram_cleanup import cleanup_segment_vram
+from .vram_cleanup import cleanup_segment_vram, release_models_for_export
 from .execution_mode import low_memory_enabled, rolling_enabled
 from . import junctions
 from .rolling import RollingRun
@@ -2061,6 +2061,16 @@ def _execute_director_plan_core(
     if not output_chunks and not segment_outputs:
         raise ValueError("Director plan produced no segments.")
 
+    # No further inference in this director invocation. Do this before the
+    # large normal IMAGE merge, and before handing file video to DLSS.
+    completed_refine_passes.clear()
+    for finished_context in (completed_av_latents, completed_first_pass_av, completed_low_carry,
+                             completed_av_handoff):
+        finished_context.clear()
+    _mem("export_model_release_before")
+    release_result = release_models_for_export()
+    _mem("export_model_release_after", model_release=release_result)
+
     if disk_run or rolling_run:
         # Continuity/phase trimming has finished. All media is durable now;
         # release the final working set before invoking the disk-only merger.
@@ -2202,6 +2212,20 @@ def _execute_director_plan_core(
         else:
             pre_face_combined = None
             segment_pre_face = []
+    if not export_segments_mode:
+        # Cache writes and continuity are complete. Return segment views into
+        # the merged outputs rather than keeping a second full movie alive.
+        from .export_handoff import merged_segment_views
+        segment_outputs = merged_segment_views(export_chunks, combined, segment_outputs)
+        segment_pre_refine = merged_segment_views(pre_source, pre_combined, segment_pre_refine)
+        if export_pre_face_refine:
+            segment_pre_face = merged_segment_views(face_source, pre_face_combined, segment_pre_face)
+        for collection in (completed_outputs, completed_pre_refine, completed_pre_face,
+                           completed_refine_passes, output_chunks, output_pre_chunks,
+                           output_pre_face_chunks):
+            collection.clear()
+        # Other local source lists disappear when this executor returns.
+        _mem("export_frame_handoff_after")
     _mem("merge_after", current={"outputs": (combined, pre_combined, pre_face_combined)})
     shift_cache.clear()
     if clear_vram_between_segments:

@@ -1,0 +1,7 @@
+CineStack 0.6.9 — export/DLSS handoff
+
+Local Python suite: 186 tests; 184 pass, 2 system-FFmpeg-dependent skips. Real imageio-FFmpeg tests also run in suite. Release checker passed.
+New coverage: merged segment views share output storage without modifying source tensors; sampler drain -> model unload -> CUDA sync -> captured host pin release ordering; failed drain prevents host truncation; six strict cached seeds reused, no first sample, first-pass cache hashes unchanged, both merged output segment lists share storage.
+Existing rolling, selected export, forward/backward boundary cache, missing-cache failure, old workflow version and independent seed tests retained.
+
+Companion DLSS 0.2.0 has real CPU codec/subprocess tests. GPU/Wine/Windows end-to-end inference and measured server RSS peaks remain pending; do not interpret CPU regression passes as GPU verification.

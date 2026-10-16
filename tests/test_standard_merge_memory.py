@@ -156,6 +156,10 @@ class StandardExecutorTests(unittest.TestCase):
         self.assertEqual(second, [561215411] * 6)
         self.assertEqual(result[0].shape[0], 30)
         self.assertEqual(result[5].shape[0], 30)
+        for whole, pieces in ((result[0], result[1]), (result[5], result[6])):
+            self.assertTrue(all(p.untyped_storage().data_ptr() == whole.untyped_storage().data_ptr()
+                                for p in pieces))
+
         self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.glob('*.pre.*') if p.name in before})
         rows = self.trace()
         allocations = [r for r in rows if r['stage'] == 'merge_allocate_before']
