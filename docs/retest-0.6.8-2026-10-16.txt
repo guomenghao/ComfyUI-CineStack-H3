@@ -1,0 +1,22 @@
+CineStack 0.6.8 — Standard All export seam/merge memory
+
+Local validation (2026-10-16):
+- python3 -m unittest discover -s tests -p 'test_*.py' -v
+  183 tests; 181 passed, 2 system-FFmpeg checks skipped. Bundled imageio-ffmpeg exercised rolling exports/video delivery. 40.575 seconds.
+- Real Chrome: seed/migration 42, overview/video 100, versioned assets 10 assertions passed (152 total).
+- python3 tools/check_release.py: passed; all example CineStack version properties 0.6.8.
+- git -c core.whitespace=cr-at-eol diff --check: passed.
+
+New tests (9):
+- Six segments / 906 frames at reduced spatial size: exact equality with the frozen old algorithm, one full-output allocation, no full-clip clones or concatenation operator on the new path.
+- Disconnected boundaries, gaps, 1/2/3/12/13-frame and empty clips, 277-frame clips, aliased views; source bytes unchanged.
+- Mixed geometry/dtype/non-contiguous source views preserve old native-size seam math and centered padding.
+- Disabled continuity, single segment and empty input behavior.
+- Exception after modifying destination: sources remain intact, no false seam-completed event.
+- Six strict-refine seeds: no first sampler call, exact per-segment seed dispatch, hashes of existing first-pass metadata/latent files unchanged, first/final outputs and allocation byte counts checked.
+- Allocation failure: no completion signal, durable partial trace, first cache still matches.
+- Default standard All diagnostics / explicit disable / unchanged cache fingerprint.
+- Real CPU continuity executor: phase trims, pin calls, paired seam events, completion follows merge. Host GPU conditioning/decoder adapters are fixtures.
+
+Scope:
+No cache schema, seed resolution, port schema or rolling scheduler changes. No Comfy Registry publication. Actual GPU, cloud 64-GiB peak, SIGKILL cause and downstream DLSS/NR/interpolation remain unverified. Normal IMAGE export necessarily holds full-film output. The prior log strongly locates failure around standard concatenation but does not include kernel OOM evidence.

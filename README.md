@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.7** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.8** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 普通全部导出内存修复（0.6.8）
+
+普通模式合并改为一次分配最终画面，再在输出中修正接缝；避免为开头 12 帧累积整段副本。保留输入画面和已有缓存，结果与旧算法逐像素对比验证。普通全部导出默认增加阶段内存诊断，保存在 `output/cinestack_diagnostics/<时间_运行ID>/memory_diagnostics.jsonl`。
+
+普通 IMAGE 输出仍需要整片画面驻留内存；超分、NR、补帧的内存由下游插件管理。长片仍建议使用滚动生成和文件 VIDEO 输出。参见 [普通合并与诊断](docs/standard-merge-memory.txt)。
 
 ## 滚动视频保存与预览（0.6.7）
 
@@ -164,7 +170,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.7` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.8` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

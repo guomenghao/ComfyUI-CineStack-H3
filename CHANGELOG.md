@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.8 — 2026-10-16
+
+- Fix standard All export seam/concatenation peaks: allocate one destination, copy each native-size clip into its centered output view, then correct seams in owned storage. Avoid whole-clip additive-luma clones and the accumulated corrected-clip list. Preserve source/cache tensors, mixed-size/dtype behavior, disconnected boundaries and output layout.
+- Enable standard All export memory diagnostics by default, in a separate diagnostics-only directory. Trace output allocation requests, per-segment copy and seam boundaries, output branches and final merge. Finish progress only after merge succeeds. Explicit diagnostic opt-outs remain supported.
+- Add pixel-equivalence, allocation-bound, alias/mixed-shape, failure-path, independent-seed/strict-refine, cache-integrity and executor diagnostic regressions. Normal IMAGE export still needs complete-film RAM; no guarantee for downstream DLSS or real GPU peak usage. No Registry publication.
+
 ## 0.6.7 — 2026-10-15
 
 - Append separate file-backed first/final VIDEO outputs after the original eight ports. Return structured completed-file UI metadata and show lazy native preview, direct download and server location in the Director workbench. Preserve old links and ordinary IMAGE/AUDIO behavior; feature-detect older host video APIs.

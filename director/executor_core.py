@@ -514,6 +514,7 @@ def _execute_director_plan_core(
         timeline_seg_total = len(all_segments)
     timeline_seg_total = max(timeline_seg_total, len(all_segments))
 
+    merged_outputs: dict[str, torch.Tensor] = {}
     output_chunks: list[torch.Tensor] = []
     output_pre_chunks: list[torch.Tensor] = []
     output_pre_face_chunks: list[torch.Tensor] = []
@@ -656,19 +657,21 @@ def _execute_director_plan_core(
         reports.append(f"阶段级内存诊断：{diagnostics.path}（仅观察；不主动释放或卸载模型）")
         log.info("CineStack MEM: diagnostic file: %s", diagnostics.path)
 
-    def _mem(stage, segment=None, current=None):
+    def _mem(stage, segment=None, current=None, **counters):
         if not diagnostics.enabled:
             return
         diagnostics.record(stage, segment, {
             "frames": (completed_outputs, completed_pre_refine, completed_pre_face,
                        completed_refine_passes, segment_outputs, segment_pre_refine, segment_pre_face),
+            "merge_outputs": merged_outputs,
+            "export_lists": (output_chunks, output_pre_chunks, output_pre_face_chunks),
             "latents": (completed_av_latents, completed_first_pass_av, completed_low_carry),
             "audio": (completed_audios, segment_audios),
             "plan_inputs": plan,
             "current_locals": current,
         }, frame_slots=len(completed_outputs), latent_slots=len(completed_av_latents),
            first_pass_slots=len(completed_first_pass_av), audio_slots=len(completed_audios),
-           shifted_model_records=len(shift_cache._items))
+           shifted_model_records=len(shift_cache._items), **counters)
 
     _mem("run_start")
 
@@ -2083,7 +2086,7 @@ def _execute_director_plan_core(
                 counts, poster, segment_pre_refine,
                 held_for_confirmation, None, [])
 
-    report_director_finish(progress_node_id, seg_total)
+    _mem("merge_before")
     export_chunks = output_chunks if output_chunks else segment_outputs
     export_pre_chunks = output_pre_chunks if output_pre_chunks else segment_pre_refine
     export_pre_face_chunks = (
@@ -2162,7 +2165,15 @@ def _execute_director_plan_core(
             "and continuity pin (no full-timeline concat)."
         )
     else:
-        combined = concat_continuous_chunks(export_chunks, export_segments, plan)
+        def merge_output(chunks, label):
+            _mem("merge_output_before", current={"sources": chunks}, output_stage=label)
+            result = concat_continuous_chunks(chunks, export_segments, plan,
+                                             observe=_mem, output_stage=label)
+            merged_outputs[label] = result
+            _mem("merge_output_after", output_stage=label)
+            return result
+
+        combined = merge_output(export_chunks, "final")
         pre_source = export_pre_chunks if export_pre_chunks else segment_pre_refine
         if not pre_source:
             pre_source = list(segment_outputs)
@@ -2173,7 +2184,7 @@ def _execute_director_plan_core(
         pre_combined = (
             combined
             if same_as_final
-            else concat_continuous_chunks(pre_source, export_segments, plan)
+            else merge_output(pre_source, "first")
         )
         if export_pre_face_refine:
             face_source = export_pre_face_chunks if export_pre_face_chunks else segment_pre_face
@@ -2186,14 +2197,16 @@ def _execute_director_plan_core(
             pre_face_combined = (
                 combined
                 if same_as_face
-                else concat_continuous_chunks(face_source, export_segments, plan)
+                else merge_output(face_source, "face_pre")
             )
         else:
             pre_face_combined = None
             segment_pre_face = []
+    _mem("merge_after", current={"outputs": (combined, pre_combined, pre_face_combined)})
     shift_cache.clear()
     if clear_vram_between_segments:
         cleanup_segment_vram(enabled=True, unload_models=False)
+    report_director_finish(progress_node_id, seg_total)
     return (
         combined,
         segment_outputs,

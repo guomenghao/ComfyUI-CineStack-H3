@@ -1,0 +1,33 @@
+影栈 0.6.8：普通模式全部导出的合并内存
+
+依据：用户提供的两次失败日志在六段二采解码结束后，连续打印五次 additive opening luma 12f，随后整个服务环境重启。运行版本为 0.6.7；二采画布 1440×800。没有可读取的内核记录，重启后的 oom=0 不能用于排除前一环境的 OOM。定位为普通合并内存峰值的强嫌疑，未声称确认操作系统杀进程。
+
+改动：
+旧路径先修正各段开头。默认非原地修正复制整段；所有副本累积在 fixed 列表中，随后 torch.cat 再分配整片。
+新路径一次分配合并输出，逐段写入；仅在独立输出内修正接缝。输入、磁盘缓存以及其他输出分支不被原地改写。
+不同画布使用居中填充，接缝统计使用未填充的原始尺寸视图；不同 dtype 保留原段计算精度后写入输出。
+原有关闭的历史接缝算法保持兼容：如返回新画面，立即写回并释放，不累积多段副本。默认启用的亮度修正不复制整段。
+连接线断开、跳号、不适用的模式保持原判断；单段保持原返回布局。普通、滚动、独立 seed、严格仅二采、缓存身份和旧端口不变。
+
+默认诊断：
+普通全部导出也自动启用；没有视频导出目录时单独保存到：
+output/cinestack_diagnostics/<时间_运行ID>/memory_diagnostics.jsonl
+不会因此启用逐段 MP4 导出，也不改缓存。
+已有滚动/落盘目录仍使用原位置。output.memoryDiagnostics=false 或 CINESTACK_MEMORY_DIAGNOSTICS=0 可以关闭。
+
+新增检查点：
+merge_before / merge_after：所有输出合并前后。
+merge_output_before / merge_output_after：当前输出分支前后；output_stage=final / first / face_pre。
+merge_allocate_before / merge_allocate_after：最终张量申请前后。requested_output_bytes 为将分配的字节数；empty 分配后 RSS 可能尚未增长，要结合后续写入看。
+merge_copy_before / merge_copy_after：各段复制到合并输出前后。
+merge_seam_before / merge_seam_after：各连通接缝修正前后。
+merge_single_reused：单段直接返回原张量，不额外分配。
+execution_failed / execution_exit：异常与清理。SIGKILL 等强杀无法写出异常结束记录；最后一条 before 可用于定位。
+相同输出复用时不产生额外分配事件。跟踪包括原画面、已完成合并结果、当前输出、latent 和音频，并按底层存储去重。
+普通模式的完成进度推迟到合并成功之后。诊断是离散检查点，并非所有瞬时峰值的采样器。
+
+边界：
+以 906 帧、1440×800、RGB float32 为例，旧接缝副本可额外占用约 10.07 GiB；此次去除这部分默认路径的冗余复制，不是宣称已在用户服务器实测下降该数值。
+普通 IMAGE 输出仍需保留最终完整画面（约 11.66 GiB）以及必要的其他输出。下游 DLSS/NR/补帧可能另有大额分配；此次未修改第三方插件。长片优先使用滚动生成和文件 VIDEO 保存。
+缓存文件与指纹格式未改；不要为了更新清缓存，也不要按旧日志强行覆盖现有 seed。
+实际 64 GiB 云服务器、GPU、完整下游后处理验收仍需用户更新重启后运行日志。

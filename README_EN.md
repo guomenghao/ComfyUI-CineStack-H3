@@ -6,6 +6,10 @@ CineStack is a planned local cinematic production workflow platform. This reposi
 
 Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
 
+## Standard All export memory fix (0.6.8)
+
+Allocate the combined image buffer once and correct seams in its owned views instead of retaining corrected whole-clip copies. Source tensors and cache identities remain unchanged. Standard All export now records allocation, copy and seam diagnostics under `output/cinestack_diagnostics/<time_run>/memory_diagnostics.jsonl`. IMAGE delivery still requires full-film RAM; use rolling file VIDEO outputs for long timelines. Downstream SR/NR/interpolation memory is outside this fix. See [details](docs/standard-merge-memory.txt).
+
 ## Rolling video delivery (0.6.7)
 
 The Director workbench now shows separate first-pass/final file previews, downloads and server locations. Two appended VIDEO outputs (`first_pass_video`, `final_video`) connect directly to official SaveVideo; use different filename prefixes and format/codec `auto` to preserve compatible streams. No CreateVideo or IMAGE-based Video Combine is needed. The original eight output indices stay unchanged.
@@ -101,7 +105,7 @@ The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cac
 
 ## Release status
 
-Version 0.6.7 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+Version 0.6.8 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
 
 The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
 Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),

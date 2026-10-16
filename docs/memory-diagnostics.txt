@@ -1,14 +1,15 @@
-影栈 0.6.6：阶段级系统内存诊断
+影栈 0.6.8：阶段级系统内存诊断
 
 如何使用
 1. git pull --ff-only 后重启 ComfyUI 服务，再刷新浏览器。
-2. 保留原 seed、提示词、连接线及运行范围；开启滚动生成后诊断默认生效。
+2. 保留原 seed、提示词、连接线及运行范围；滚动生成或普通全部导出时诊断默认生效。
 3. 控制台打印 CineStack MEM: diagnostic file: <本轮输出目录>/memory_diagnostics.jsonl。
-   通常位于 output/minimax_seg_export/<时间目录>/，以日志实际路径为准。
+   滚动位于 output/minimax_seg_export/<时间目录>/；普通全部导出位于
+   output/cinestack_diagnostics/<时间_运行ID>/，以日志实际路径为准。
 4. 将 memory_diagnostics.jsonl 和包含采样/异常的控制台日志一并提供。
    文件按阶段追加，每行关闭；中途 Python 异常会记录 execution_failed，强制 kill/OOM kill 可能没有最后一行。
 5. 排除诊断开销时，可在启动服务前设置 CINESTACK_MEMORY_DIAGNOSTICS=0。
-   也支持后端 output.memoryDiagnostics=false；非滚动默认关闭，可用 true 开启。
+   也支持后端 output.memoryDiagnostics=false；其他模式可用 true 开启。
    没有增加新 UI 控件，不要求旧工作流迁移或清除一采缓存。
 
 阶段
@@ -68,3 +69,9 @@ D. 模型管理记录或 shifted-model 记录持续增长：检查模型生命�
 0.6.6 新增：采样内部前后与宿主缓冲清理前后检查点、Comfy/pytorch pinned 分项、
 动态模型 weights/patches HostBuffer 和底层缓存数量。见 host-memory-lifecycle.txt。
 诊断仍为只读；实际释放来自采样生命周期清理，不依赖诊断开关。
+
+0.6.8：普通全部导出也默认启用。没有分段导出目录时写入独立的
+output/cinestack_diagnostics/<时间_运行ID>/memory_diagnostics.jsonl，不开启视频编码。
+新增 merge_output / merge_allocate / merge_copy / merge_seam 前后检查点，
+output_stage 区分 final / first / face_pre；分配前记录 requested_output_bytes。
+普通完成进度在合并成功后发出；详细说明见 standard-merge-memory.txt。

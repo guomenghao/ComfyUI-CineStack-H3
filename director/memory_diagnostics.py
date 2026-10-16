@@ -244,10 +244,24 @@ def host_memory_snapshot():
 
 class MemoryDiagnostics:
     def __init__(self, plan, root, *, rolling=False):
-        setting = ((getattr(plan, 'raw', None) or {}).get('output') or {}).get('memoryDiagnostics', rolling)
+        output = (getattr(plan, 'raw', None) or {}).get('output') or {}
+        default = rolling or getattr(plan, 'export_mode', output.get('exportMode')) == 'all'
+        setting = output.get('memoryDiagnostics', default)
         self.enabled = setting is True and os.getenv('CINESTACK_MEMORY_DIAGNOSTICS', '1') != '0'
         self.path = Path(root) / 'memory_diagnostics.jsonl' if root is not None else None
         self.run = uuid.uuid4().hex[:12]
+        if self.enabled and self.path is None:
+            # Ordinary All export has no MP4 directory. Keep diagnostics separate
+            # so enabling them cannot accidentally activate segment video export.
+            try:
+                import folder_paths
+                from datetime import datetime
+                directory = Path(folder_paths.get_output_directory()) / 'cinestack_diagnostics' / (
+                    datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.run)
+                directory.mkdir(parents=True, exist_ok=False)
+                self.path = directory / 'memory_diagnostics.jsonl'
+            except OSError:
+                log.warning('CineStack MEM: diagnostic directory unavailable; console only.')
         self.last = self.baseline = None
         self.current_segment = None
         self.segment_baseline = {}
@@ -297,7 +311,7 @@ class MemoryDiagnostics:
         alloc = row['allocator'] or {}
         log.info('CineStack MEM: run=%s seg=%s stage=%s RSS=%s MiB delta=%s Anon=%s File=%s '
                  'tracked_cpu=%s heap_used=%s heap_free=%s malloc_mmap=%s models=%s '
-                 'comfy_pinned=%s patch_host=%s patch_pinned=%s weight_pinned=%s',
+                 'comfy_pinned=%s patch_host=%s patch_pinned=%s weight_pinned=%s output=%s requested=%s MiB',
                  self.run, segment, stage, mb(rss), mb(row['delta_previous_rss']),
                  mb(process.get('RssAnon')), mb(process.get('RssFile')), mb((tensors or {}).get('cpu_bytes')),
                  mb(alloc.get('uordblks')), mb(alloc.get('fordblks')), mb(alloc.get('hblkhd')),
@@ -305,7 +319,8 @@ class MemoryDiagnostics:
                  mb((row['host_memory'] or {}).get('total_pinned_memory')),
                  mb((row['host_memory'] or {}).get('patches_host_buffer_bytes')),
                  mb((row['host_memory'] or {}).get('patches_registered_bytes')),
-                 mb((row['host_memory'] or {}).get('weights_registered_bytes')))
+                 mb((row['host_memory'] or {}).get('weights_registered_bytes')),
+                 counters.get('output_stage', '-'), mb(counters.get('requested_output_bytes')))
         if self.path and not self.file_failed:
             try:
                 with self.path.open('a', encoding='utf-8') as stream:

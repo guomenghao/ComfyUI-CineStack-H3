@@ -1805,26 +1805,74 @@ def concat_continuous_chunks(
     chunks: list[torch.Tensor],
     segments: list[SegmentPlan],
     plan: DirectorPlan,
+    *,
+    observe=None,
+    output_stage: str = "final",
 ) -> torch.Tensor:
-    """Concatenate with exposure-only seam fix.
+    """Build one owned output; repair seams without retaining corrected clips.
 
-    Generation settling burn-in handles flash/pulse. Concat RGB morphs are OFF
-    (00035: body0/hold→pop caused 拖影 and stutter pulses).
+    Source/cache tensors remain untouched. Native-size views exclude letterbox
+    padding from seam statistics, just as the old repair-then-pad path did.
+    Optional legacy seam helpers may return a new tensor: copy it back and drop
+    it immediately rather than retaining a second list of whole clips.
     """
     if not chunks:
         raise ValueError("concat_continuous_chunks: no chunks")
-    if not getattr(plan, "continuity_enabled", False) or len(chunks) < 2:
-        return cat_frames_variable_size(chunks)
-    fixed: list[torch.Tensor] = [chunks[0]]
-    for i in range(1, len(chunks)):
-        if (i >= len(segments) or segments[i].index != segments[i - 1].index + 1
-                or not is_continuity_active(plan, segments[i])):
-            fixed.append(chunks[i])
-            continue
-        left, body = prepare_export_seam(fixed[-1], chunks[i])
-        fixed[-1] = left
-        fixed.append(body)
-    return cat_frames_variable_size(fixed)
+
+    def record(stage, segment=None, current=None, **counters):
+        if observe is not None:
+            observe(stage, segment, current, output_stage=output_stage, **counters)
+
+    if len(chunks) == 1:
+        record("merge_single_reused", current={"merged": chunks[0]})
+        return chunks[0]
+    height = max(int(c.shape[1]) for c in chunks)
+    width = max(int(c.shape[2]) for c in chunks)
+    channels = int(chunks[0].shape[3])
+    dtype, device = chunks[0].dtype, chunks[0].device
+    for chunk in chunks:
+        if chunk.ndim != 4 or int(chunk.shape[3]) != channels or chunk.device != device:
+            raise ValueError("Merge requires FHWC clips on one device with matching channels.")
+        dtype = torch.promote_types(dtype, chunk.dtype)
+    shape = (sum(int(c.shape[0]) for c in chunks), height, width, channels)
+    element_bytes = torch.empty((), dtype=dtype).element_size()
+    record("merge_allocate_before", requested_output_bytes=math.prod(shape) * element_bytes)
+    merged = torch.empty(shape, dtype=dtype, device=device)
+    record("merge_allocate_after", current={"merged": merged})
+    views = []
+    offset = 0
+    for i, chunk in enumerate(chunks):
+        number = segments[i].timeline_index + 1 if i < len(segments) else i + 1
+        record("merge_copy_before", number, {"merged": merged})
+        count, h, w, _ = chunk.shape
+        slot = merged[offset:offset + count]
+        if (h, w) != (height, width):
+            slot.fill_(0.5)
+        y, x = (height - h) // 2, (width - w) // 2
+        view = slot[:, y:y + h, x:x + w, :]
+        view.copy_(chunk)
+        views.append(view)
+        offset += count
+        record("merge_copy_after", number, {"merged": merged})
+    if getattr(plan, "continuity_enabled", False):
+        for i in range(1, len(chunks)):
+            if (i >= len(segments) or segments[i].index != segments[i - 1].index + 1
+                    or not is_continuity_active(plan, segments[i])):
+                continue
+            number = segments[i].timeline_index + 1
+            record("merge_seam_before", number, {"merged": merged})
+            # Convert only when a legacy mixed-dtype caller requires native
+            # arithmetic. The usual float32 path operates entirely in output.
+            left = views[i - 1].to(dtype=chunks[i - 1].dtype)
+            body = views[i].to(dtype=chunks[i].dtype)
+            fixed_left, fixed_body = prepare_export_seam(left, body, inplace_body=True)
+            if fixed_left is not views[i - 1]:
+                views[i - 1].copy_(fixed_left)
+            if fixed_body is not views[i]:
+                views[i].copy_(fixed_body)
+            del left, body, fixed_left, fixed_body
+            record("merge_seam_after", number, {"merged": merged})
+    return merged
 
 
 def apply_cached_segment_continuity(
