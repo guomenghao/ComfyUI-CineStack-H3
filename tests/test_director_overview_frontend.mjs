@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
       const filename = path.resolve(root, '.' + req.url);
       if (!filename.startsWith(root + path.sep)) throw new Error('Invalid path');
       let source = await fs.readFile(filename, 'utf8');
-      if (req.url === '/web/js/minimax_timeline.js') source += '\nexport {CineStackH3DirectorEditor};';
+      if (req.url === '/web/js/minimax_timeline.js') source += '\nexport {CineStackH3DirectorEditor, parseTimeline};';
       return res.end(source);
     } catch { res.statusCode = 404; return res.end(); }
   }
@@ -187,6 +187,32 @@ try {
   check(!(await page.locator('[data-r="out-export-mode"]').isDisabled()),'turning off both memory modes restores normal export');
   await rolling.check();
   // Exercise the production global queue wrapper, not only the workbench action.
+  const submissionChecks = await page.evaluate(async () => {
+    const {CineStackH3DirectorEditor, parseTimeline} = await import('/web/js/minimax_timeline.js');
+    const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
+    const saved=JSON.parse(editor.timelineWidget.value);
+    saved.executionMode='refine_only';
+    Object.assign(saved.output,{rollingGeneration:true,lowMemoryMode:false,memoryDiagnostics:true,
+      rollingBaseManifest:'output/previous/manifest.json',futureOutputSetting:17});
+    const holder=document.createElement('div');document.body.append(holder);
+    const node={...editor.node,id:57,widgets:editor.node.widgets.map(w=>({name:w.name,value:w.name==='timeline_data'?JSON.stringify(saved):w.value,options:{...w.options}})),_cineStackEditor:null};
+    const loaded=new CineStackH3DirectorEditor(node,holder,{options:{},element:holder});node._cineStackEditor=loaded;
+    check(loaded.outRolling.checked && loaded.timeline.executionMode==='refine_only','import keeps rolling and strict second pass');
+    check(loaded.overview.modeButtons.find(b=>b.dataset.mode==='refine_only').getAttribute('aria-pressed')==='true','reloaded strict second-pass button is visibly selected');
+    const payload=JSON.parse(loaded.timelineWidget.serializeValue(node));
+    check(payload.output.rollingGeneration && payload.output.memoryDiagnostics && payload.output.futureOutputSetting===17 && payload.output.rollingBaseManifest===saved.output.rollingBaseManifest,'save/submit preserves output extensions including diagnostics and manifest');
+    const again=parseTimeline(JSON.stringify(payload),620,24);
+    check(again.executionMode==='refine_only' && again.output.rollingGeneration===true,'saved workflow round trip keeps execution mode');
+    // Simulate a pending debounce / direct API export bypassing queuePrompt.
+    loaded.timelineWidget.value='{}';loaded.overview.setMode('first_pass');loaded.timelineWidget.value='{}';
+    const current=JSON.parse(loaded.timelineWidget.serializeValue(node));
+    check(current.executionMode==='first_pass' && current.output.rollingGeneration,'serialization flushes editor without queue or blur');
+    loaded.onOutputField('rollingGeneration',false);
+    check(JSON.parse(loaded.timelineWidget.serializeValue(node)).output.rollingGeneration===false,'explicit disable survives serialization');
+    const legacy=parseTimeline(JSON.stringify({...saved,executionMode:undefined,output:{exportMode:'all'}}),620,24);
+    check(!legacy.output.rollingGeneration && !legacy.executionMode,'old workflows retain legacy non-rolling defaults');
+    loaded.overview.dispose();holder.remove();return checks;
+  });checks.push(...submissionChecks);
   const preflightChecks = await page.evaluate(async () => {
     const {app}=await import('/scripts/app.js');
     const {api}=await import('/scripts/api.js');
@@ -201,7 +227,7 @@ try {
     check(overview.root.querySelector('.cs-run-summary').textContent.includes('3 段 · 滚动生成 · 全部导出'),'run summary shows selected count and output modes');
     rememberQueueNodeDefinition({name:'SaveFixture',output_node:true});
     let reachable=true;
-    app.graphToPrompt=async()=>({output:{56:{class_type:'CineStackH3Director',inputs:{}},90:{class_type:'SaveFixture',inputs:reachable?{images:['56',0]}:{}},91:{class_type:'SaveFixture',inputs:{}}}});
+    app.graphToPrompt=async()=>({output:{56:{class_type:'CineStackH3Director',inputs:{timeline_data:editor.timelineWidget.serializeValue(editor.node)}},90:{class_type:'SaveFixture',inputs:reachable?{images:['56',0]}:{}},91:{class_type:'SaveFixture',inputs:{}}}});
     let flushes=0;
     installDirectorQueueGuard(()=>{flushes++;editor.flushTimelineSync()},()=>{});
     const installed=app.queuePrompt;installDirectorQueueGuard(()=>{},()=>{});
@@ -243,7 +269,22 @@ try {
     const fetch=api.fetchApi;api.fetchApi=async()=>{throw new Error('offline')};
     check(await app.queuePrompt(0,1)===false && globalThis.queued===count+1,'cache request failure stops strict second pass before submission');
     check(overview.recovery.textContent.includes('offline'),'failed cache request has a visible retry action');
-    api.fetchApi=fetch;globalThis.forceMatch=false;
+    api.fetchApi=fetch;
+    const originalGraphToPrompt=app.graphToPrompt;
+    app.graphToPrompt=async()=>{const p=await originalGraphToPrompt();p.output[56].inputs.timeline_data='{}';return p};
+    const mismatchCount=globalThis.queued;
+    check(await app.queuePrompt(0,1)===false && globalThis.queued===mismatchCount,'serialized stage mismatch blocks main Run');
+    check(overview.recovery.textContent.includes('与界面不一致'),'serialization mismatch is explicitly explained');
+    app.graphToPrompt=originalGraphToPrompt;
+    overview.setMode('first_pass');editor.onOutputField('rollingGeneration',false);
+    app.graphToPrompt=async()=>{const p=await originalGraphToPrompt();p.output[90].inputs={video:['56',9]};return p};
+    check(await app.queuePrompt(0,1)===false && globalThis.queued===mismatchCount,'normal mode file VIDEO connection stops before queue');
+    check(overview.recovery.textContent.includes('文件视频端口'),'file VIDEO conflict is actionable');
+    overview.recovery.querySelector('[data-fix="rolling"]').click();
+    check(editor.timeline.output.rollingGeneration===true && globalThis.queued===mismatchCount,'enable rolling action persists without auto-generation');
+    await app.queuePrompt(0,1);
+    check(globalThis.queued===mismatchCount+1,'file VIDEO queues after explicit rolling fix');
+    app.graphToPrompt=originalGraphToPrompt;globalThis.forceMatch=false;
     editor.timeline.runSelectEnabled=true;editor.timeline.runSelection=[0,1,3];overview.setMode('legacy');
     delete app.graphToPrompt;
     return checks;

@@ -171,4 +171,53 @@ class VideoDeliveryTests(unittest.TestCase):
         self.assertEqual(values['OUTPUT_IS_LIST'], (True,True,False,False,True,False,True,True,False,False))
 
 
+class FileVideoGuardTests(unittest.TestCase):
+    def test_normal_file_links_fail_before_plan_or_sampler_and_keep_cache(self):
+        tree = ast.parse((f.ROOT / 'nodes/director.py').read_text())
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+        execute = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'execute')
+        prepare, sample = mock.Mock(), mock.Mock()
+        env = {'__package__': f.PKG + '.nodes', 'prepare_director_plan': prepare,
+               'execute_director_plan_core': sample}
+        exec(compile(ast.Module(body=[execute], type_ignores=[]), 'guard_fixture', 'exec'), env)
+        for slot in (8, 9):
+            with self.subTest(slot=slot), self.assertRaisesRegex(ValueError, '滚动生成未开启'):
+                env['execute'](None, model=None, video_vae=None, audio_vae=None, clip=None,
+                    task_type='r2v', global_prompt='', frame_rate=24, width=32, height=32,
+                    ref_max_size=32, total_frames=25, timeline_data='{}', unique_id='56',
+                    prompt={'7': {'inputs': {'video': ['56', slot]}}})
+        prepare.assert_not_called(); sample.assert_not_called()
+
+    def test_file_guard_retains_old_image_workflows_and_accepts_rolling(self):
+        raw = {'executionMode': 'refine_only', 'output': {'rollingGeneration': True}}
+        graph = {'201': {'inputs': {'any_input': ['56', 9]}}}
+        before = json.dumps(raw, sort_keys=True)
+        m.validate_file_video_connections(raw, graph, '56')
+        self.assertEqual(json.dumps(raw, sort_keys=True), before)
+        for slot in range(8):
+            m.validate_file_video_connections('{}', {'7': {'inputs': {'images': ['56', slot]}}}, '56')
+        m.validate_file_video_connections('{}', None, '56')
+        m.validate_file_video_connections('{}', graph, '99')
+        # JSON true is required; a string must never silently enable rolling.
+        with self.assertRaises(ValueError):
+            m.validate_file_video_connections({'output': {'rollingGeneration': 'true'}}, graph, '56')
+
+    def test_reconnecting_video_changes_comfy_cache_signature_not_disk_cache(self):
+        case = f.SegmentSeedTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        tree = ast.parse((f.ROOT / 'nodes/director.py').read_text())
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'IS_CHANGED')
+        method.decorator_list = []
+        env = {'__package__': f.PKG + '.nodes'}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'signature_fixture', 'exec'), env)
+        signature = env['IS_CHANGED']
+        base = signature(None, unique_id='56', cache_name='unchanged')
+        linked = signature(None, unique_id='56', cache_name='unchanged',
+                           prompt={'7': {'inputs': {'video': ['56', 9]}}})
+        self.assertNotEqual(base, linked)
+        self.assertEqual(base, linked[0])
+
+
 if __name__ == '__main__': unittest.main()

@@ -2079,6 +2079,9 @@ function parseTimeline(raw, totalFrames, fps) {
         delete data.referenceVideo;
         delete data.reference_video;
         data.output = normalizeOutputContinuity({
+            // Preserve execution/output extensions on import and onConfigure.
+            // Rebuilding only the original fields silently disabled rolling.
+            ...(data.output || {}),
             mode: data.output?.mode || "long_edge",
             // Keep ResolutionSelector fields across reload (were previously dropped → always 16:9).
             aspectRatio: data.output?.aspectRatio != null
@@ -2273,9 +2276,15 @@ class CineStackH3DirectorEditor {
                 : null;
             widget._mmxWitnessSerialized = true;
             widget.serializeValue = function (targetNode) {
-                const raw = previous
-                    ? previous.call(widget, targetNode)
-                    : widget.value;
+                // Serialization can be invoked without the queue wrapper (save,
+                // API export, alternate Run buttons). Read the current editor,
+                // not the editor captured before a workflow reload.
+                const owner = targetNode ?? node;
+                const editor = owner._cineStackEditor;
+                if (editor && !owner._mmxPendingConfigureRestore) editor.flushTimelineSync();
+                const raw = editor && !owner._mmxPendingConfigureRestore
+                    ? widget.value
+                    : previous ? previous.call(widget, targetNode) : widget.value;
                 return typeof raw === "string"
                     ? injectExternalGroupsWitness(targetNode ?? node, raw)
                     : raw;

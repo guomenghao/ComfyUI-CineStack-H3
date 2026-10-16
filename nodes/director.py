@@ -193,7 +193,7 @@ class CineStackH3Director:
                     },
                 ),
             },
-            "hidden": {"unique_id": "UNIQUE_ID"},
+            "hidden": {"unique_id": "UNIQUE_ID", "prompt": "PROMPT"},
         }
 
     @classmethod
@@ -233,7 +233,7 @@ class CineStackH3Director:
         return True
 
     @classmethod
-    def IS_CHANGED(cls, unique_id=None, cache_name=None, **kwargs):
+    def IS_CHANGED(cls, unique_id=None, cache_name=None, prompt=None, **kwargs):
         # Do not return NaN: that would re-run every Director queue even when
         # confirm_first_pass is off. Linked Refine is None here, so fingerprint
         # the .pre cache files that only the confirmation hold writes.
@@ -245,9 +245,14 @@ class CineStackH3Director:
 
         # Must resolve the same directory the executor will read/write, otherwise
         # the confirm-first-pass hold never sees its own written .pre cache.
-        return first_pass_cache_disk_signature(
+        signature = first_pass_cache_disk_signature(
             resolve_segment_cache_key(cache_name, unique_id)
         )
+        from ..director.video_delivery import file_video_consumers
+        consumers = file_video_consumers(prompt, unique_id)
+        # Reconnecting a previously blocked VIDEO output must run the guard,
+        # even when the Director's inputs and first-pass disk cache are unchanged.
+        return (signature, consumers) if consumers else signature
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "IMAGE", "STRING", "IMAGE", "IMAGE", "VIDEO", "VIDEO")
     RETURN_NAMES = (
@@ -317,9 +322,12 @@ class CineStackH3Director:
         export_source_images=False,
         export_pre_face_refine=False,
         cache_name="",
+        prompt=None,
         **kwargs,
     ):
         del kwargs
+        from ..director.video_delivery import validate_file_video_connections
+        validate_file_video_connections(timeline_data, prompt, unique_id)
 
         plan = prepare_director_plan(
             timeline_data=timeline_data,

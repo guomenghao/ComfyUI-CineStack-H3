@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.10 — 2026-10-16
+
+- Preserve rolling, disk mode, diagnostic and manifest output fields when loading saved timelines. Flush current editor state during API serialization as well as queue submission.
+- Preflight compares serialized execution/rolling/export settings with the editor and rejects ordinary-mode file VIDEO connections with an explicit Enable rolling action.
+- Backend validates file VIDEO links before Director preparation/sampling; consumer topology invalidates Comfy output reuse without changing any disk-cache fingerprint or file. Legacy IMAGE workflows and strict-refine/continuity/rolling behavior remain.
+- Add browser round-trip/queue tests and backend guard/compatibility tests. No Registry publication.
+
 ## 0.6.9 — 2026-10-16
 
 - End-of-inference model handoff: drain internal sampler buffers, unload via ComfyUI, synchronize and release reloadable host pins before export allocations.

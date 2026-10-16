@@ -2,7 +2,13 @@
 
 [English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
 
-当前版本 **0.6.9** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+当前版本 **0.6.10** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+
+## 工作流设置与文件接线检查（0.6.10）
+
+修复重新载入工作流时丢失滚动生成、低内存和诊断设置的问题。保存/API 导出时同步编辑器最新设置；提交前检查实际执行方式、滚动和导出方式是否与界面一致。
+
+`first_pass_video` / `final_video` 是滚动文件输出。普通模式接这两个端口时，运行前明确提示，并提供“开启滚动生成”按钮；不会自动切换或生成。绕过前端时，后端在导演台准备/采样前报错。原 IMAGE/AUDIO 工作流继续使用旧行为。已有一采要只跑二采时，请明确选择“仅二采”，不要依赖“跟随工作流”的缓存自动选择。详见 [设置与接线检查](docs/submission-settings.txt)。
 
 ## 导演台 → DLSS 内存交接（0.6.9）
 
@@ -176,7 +182,7 @@ API prompt 必须先显式转换，再提交。
 
 CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
 GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.9` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+当前版本 `0.6.10` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu

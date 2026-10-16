@@ -1,6 +1,7 @@
 """Expose durable rolling files without opening or decoding full video frames."""
 from pathlib import Path
 import logging
+import json
 
 log = logging.getLogger('ComfyUI-CineStack-H3.video_delivery')
 
@@ -53,3 +54,37 @@ def finalize_video_delivery(plan, outputs):
                 log.warning('File VIDEO interface unavailable: %s', exc)
         videos.append(video)
     return {'ui': {'cinestack_videos': rows}, 'result': tuple(outputs) + tuple(videos)}
+
+
+def file_video_consumers(prompt, unique_id):
+    """Inspect actual API links, including links through reroutes/switches."""
+    if not isinstance(prompt, dict) or unique_id is None:
+        return ()
+    return tuple(sorted(
+        (str(node_id), name, value[1])
+        for node_id, node in prompt.items() if isinstance(node, dict)
+        for name, value in (node.get('inputs') or {}).items()
+        if isinstance(value, (list, tuple)) and len(value) == 2
+        and str(value[0]) == str(unique_id) and type(value[1]) is int
+        and value[1] in (8, 9)
+    ))
+
+
+def validate_file_video_connections(timeline_data, prompt, unique_id):
+    """Fail before Director preparation/sampling; never change caches or mode."""
+    consumers = file_video_consumers(prompt, unique_id)
+    if not consumers:
+        return
+    raw = json.loads(timeline_data) if isinstance(timeline_data, str) else timeline_data
+    if ((raw or {}).get('output') or {}).get('rollingGeneration') is True:
+        return
+    details = ', '.join(
+        f"{'first_pass_video' if slot == 8 else 'final_video'} → #{node}.{name}"
+        for node, name, slot in consumers
+    )
+    raise ValueError(
+        f"导演台 #{unique_id} 尚未开始生成：文件视频输出已接线（{details}），但滚动生成未开启。"
+        "请在导演台开启「滚动生成（当前段＋上一段）」；已有一采且只想二采时，选择「仅二采」。"
+        "若保留普通模式，请改接 IMAGE/AUDIO → CreateVideo → SaveVideo。"
+        "未重跑一采，未修改已有缓存。 / File VIDEO outputs require rolling generation."
+    )

@@ -1,0 +1,8 @@
+CineStack 0.6.10 — persisted execution settings and file VIDEO guard
+
+Root cause reproduced: parseTimeline rebuilt output with an original-field allowlist, losing rollingGeneration, lowMemoryMode, memoryDiagnostics and rollingBaseManifest on reload. Preserve output extensions before normalization. ExecutionMode was already retained at root; tests cover it independently.
+
+Local Python: 189 tests, 187 passed, 2 system-FFmpeg-dependent skips. Imageio FFmpeg exercised real rolling/audio/cache integration. New guard tests do not depend on FFmpeg and verify rejection before planner/sampler and no timeline mutation. Existing seed, strict-refine, boundary, export and cache-integrity tests pass.
+Browser: 113 workbench checks, 42 seed/migration checks, 10 asset-cache checks. Includes loaded rolling/strict values, pressed button state, save/load, pending editor state on direct serialization, mismatch rejection, file-port preflight and explicit rolling recovery without automatic submission. Host graph/queue/cache APIs are fixtures; UI code is production.
+Workflow delivery: 66 nodes, 97 links, eight SR/NR/interpolation switch routes valid. Six first-pass fingerprints unchanged under production planner with reference pixel reads mocked; same node ID, seed and cache namespace. Private user workflow remains in local delivery directory, not committed to public repository.
+Backend fallback checks when Director executes, before its preparation/sampling/cache mutations. Frontend rejects before queue submission. Direct API upstream execution is not globally intercepted. No cache schema or fingerprint changes. No GPU/DLSS/server RSS validation and no Registry publication.

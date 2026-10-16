@@ -9,6 +9,8 @@ import { cacheStatusPayload, diffLabel, connectedRefineForDirector } from "./min
 
 const COPY = {
     zh: {
+        fileVideo: "尚未提交：first_pass_video / final_video 文件视频端口已接线，但滚动生成未开启。请开启滚动生成；或保留普通模式，改接 IMAGE/AUDIO → CreateVideo → SaveVideo。",
+        enableRolling: "开启滚动生成", syncMismatch: "尚未提交：实际提交的滚动／执行方式与界面不一致。请保存工作流并重新载入，确认设置后再运行。",
         conflict: "尚未提交：滚动生成＋全部导出需要统一输出阶段。当前工作流按缓存自动选择一采或二采，请先选择本轮阶段。",
         chooseFirst: "改为仅一采", chooseSecond: "改为仅二采", inspect: "查看问题段", retry: "重新检查缓存",
         actionNote: "这里只修改设置，不会自动开始生成；确认后点击“检查并运行”或顶部“运行”。",
@@ -37,6 +39,8 @@ const COPY = {
         lowMemory: "低内存落盘：只保存本轮勾选段，文件路径见报告；IMAGE/AUDIO 不输出完整视频。",
     },
     en: {
+        fileVideo: "Not submitted: file VIDEO outputs are connected but rolling generation is off. Enable rolling, or reconnect IMAGE/AUDIO through CreateVideo for standard mode.",
+        enableRolling: "Enable rolling", syncMismatch: "Not submitted: serialized execution/rolling settings differ from the editor. Save and reload the workflow, review settings, then run again.",
         conflict: "Not submitted: rolling generation with All export needs one output stage. The workflow currently chooses a stage per cache. Select first pass or second pass for this run.",
         chooseFirst: "Use first pass only", chooseSecond: "Use second pass only", inspect: "Show problem segments", retry: "Recheck cache",
         actionNote: "These actions change settings only. Review them, then choose Check and run or the main Run button.",
@@ -118,7 +122,7 @@ export class DirectorOverview {
         this.editor = editor; this.node = editor.node; this.rows = new Map(); this.seq = 0;
         this.data = null; this.busy = false; this.disposed = false; this.signature = "";
         this.root = document.createElement("details"); this.root.open = true; this.root.className = "cstk-overview";
-        this.root.innerHTML = `<style>${OVERVIEW_STYLES}</style><summary class="cs-head"><svg class="cs-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><b></b><span class="cs-count"></span></summary><div class="cs-controls"><label class="cs-scope"><span></span><select><option value="all"></option><option value="selected"></option></select></label><button type="button" class="cs-refresh"></button></div><p class="cs-run-summary"></p><div class="cs-mode"><span></span><div class="cs-mode-buttons" role="group"><button type="button" data-mode="first_pass"></button><button type="button" data-mode="refine_only"></button><button type="button" data-mode="legacy"></button></div><button type="button" class="cs-queue"></button></div><p class="cs-hint"></p><div class="cs-recovery" hidden role="status" aria-live="polite"><p></p><div class="cs-recovery-actions"><button type="button" data-fix="first_pass"></button><button type="button" data-fix="refine_only"></button><button type="button" data-fix="inspect"></button><button type="button" data-fix="retry"></button></div><small></small></div><div class="cs-list"></div><p class="cs-message" role="status" aria-live="polite"></p>`;
+        this.root.innerHTML = `<style>${OVERVIEW_STYLES}</style><summary class="cs-head"><svg class="cs-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><b></b><span class="cs-count"></span></summary><div class="cs-controls"><label class="cs-scope"><span></span><select><option value="all"></option><option value="selected"></option></select></label><button type="button" class="cs-refresh"></button></div><p class="cs-run-summary"></p><div class="cs-mode"><span></span><div class="cs-mode-buttons" role="group"><button type="button" data-mode="first_pass"></button><button type="button" data-mode="refine_only"></button><button type="button" data-mode="legacy"></button></div><button type="button" class="cs-queue"></button></div><p class="cs-hint"></p><div class="cs-recovery" hidden role="status" aria-live="polite"><p></p><div class="cs-recovery-actions"><button type="button" data-fix="rolling"></button><button type="button" data-fix="first_pass"></button><button type="button" data-fix="refine_only"></button><button type="button" data-fix="inspect"></button><button type="button" data-fix="retry"></button></div><small></small></div><div class="cs-list"></div><p class="cs-message" role="status" aria-live="polite"></p>`;
         this.scope = this.root.querySelector(".cs-scope select"); this.modeButtons = [...this.root.querySelectorAll("[data-mode]")];
         this.recovery = this.root.querySelector(".cs-recovery");
         this.list = this.root.querySelector(".cs-list"); this.message = this.root.querySelector(".cs-message");
@@ -133,7 +137,10 @@ export class DirectorOverview {
         };
         for (const button of this.modeButtons) button.onclick = () => this.setMode(button.dataset.mode);
         for (const button of this.recovery.querySelectorAll("[data-fix]")) button.onclick = () => {
-            if (button.dataset.fix === "inspect") this.showProblems();
+            if (button.dataset.fix === "rolling") {
+                editor.onOutputField("rollingGeneration", true); this.update();
+            }
+            else if (button.dataset.fix === "inspect") this.showProblems();
             else if (button.dataset.fix === "retry") this.checkCache();
             else this.setMode(button.dataset.fix);
         };
@@ -159,7 +166,7 @@ export class DirectorOverview {
         return JSON.stringify([rows, this.editor.timeline.global, this.editor.timeline.output,
             names.map((name) => widget(this.node, name)?.value), this.editor.timeline.runSelectEnabled,
             this.editor.timeline.runSelection, this.editor.timeline.executionMode,
-            this.node.inputs?.map(({name, link}) => [name, link]), refine?.id,
+            this.node.inputs?.map(({name, link}) => [name, link]), this.node.outputs?.map(({links}) => links), refine?.id,
             refine?.widgets?.map(({name, value}) => [name, value]), refine?.inputs?.map(({name, link}) => [name, link])],
             (key, value) => key === "previewB64" || key === "previewFrames" ? undefined : value);
     }
@@ -331,6 +338,17 @@ export class DirectorOverview {
             else ready = true;
         }
         if (this.stageConflict && !reason) reason = label("conflict");
+        const links = this.node.graph?.links;
+        const values = links instanceof Map ? [...links.values()] : Object.values(links || {});
+        this.fileVideoConflict = output.rollingGeneration !== true && values.some(link => {
+            const origin = link.origin_id ?? link[1], slot = link.origin_slot ?? link[2];
+            const targetId = link.target_id ?? link[3];
+            const target = this.node.graph?.getNodeById?.(targetId)
+                || this.node.graph?._nodes?.find(n => String(n.id) === String(targetId));
+            return String(origin) === String(this.node.id) && [8, 9].includes(slot)
+                && target && (target.mode == null || target.mode === 0);
+        });
+        if (this.fileVideoConflict) reason = label("fileVideo");
         if (typeof app.queuePrompt !== "function") reason = label("noQueue");
         this.root.querySelector(".cs-run-summary").textContent = label("runSummary")
             .replace("{n}", rows.filter((_, i) => this.runEnabled(i)).length)
@@ -339,11 +357,11 @@ export class DirectorOverview {
         this.recovery.hidden = !reason;
         this.recovery.querySelector("p").textContent = reason;
         this.recovery.querySelector("small").textContent = label("actionNote");
-        const fixes = {first_pass: "chooseFirst", refine_only: "chooseSecond", inspect: "inspect", retry: "retry"};
+        const fixes = {rolling: "enableRolling", first_pass: "chooseFirst", refine_only: "chooseSecond", inspect: "inspect", retry: "retry"};
         for (const button of this.recovery.querySelectorAll("[data-fix]")) {
             const fix = button.dataset.fix;
             button.textContent = label(fixes[fix]);
-            button.hidden = this.stageConflict ? !["first_pass", "refine_only"].includes(fix)
+            button.hidden = this.fileVideoConflict ? fix !== "rolling" : fix === "rolling" ? true : this.stageConflict ? !["first_pass", "refine_only"].includes(fix)
                 : mode === "refine_only" ? fix === "refine_only" : fix !== "inspect";
         }
         this.blockReason = reason;
@@ -473,6 +491,29 @@ export async function preflightDirectorQueue(args = []) {
             roots.forEach(visit);
         }
         candidates = candidates.filter(view => active.has(String(view.node.id)));
+        for (const view of candidates) {
+            const id = String(view.node.id);
+            let submitted;
+            try { submitted = JSON.parse(output[id].inputs.timeline_data); } catch { submitted = null; }
+            const expected = view.editor.timeline;
+            let reason = "";
+            if (!submitted || (submitted.executionMode || "legacy") !== (expected.executionMode || "legacy")
+                || (submitted.output?.rollingGeneration === true) !== (expected.output?.rollingGeneration === true)
+                || (submitted.output?.exportMode || "all") !== (expected.output?.exportMode || "all")) {
+                reason = label("syncMismatch");
+            } else if (submitted.output?.rollingGeneration !== true && [...active].some(target =>
+                Object.values(output[target]?.inputs || {}).some(value => Array.isArray(value)
+                    && value.length === 2 && String(value[0]) === id && [8, 9].includes(value[1])))) {
+                reason = label("fileVideo");
+            }
+            if (reason) {
+                view.submitError = reason; view.updateAction();
+                view.recovery.hidden = false; view.recovery.querySelector("p").textContent = reason;
+                const rollingButton = view.recovery.querySelector('[data-fix="rolling"]');
+                rollingButton.hidden = reason !== label("fileVideo");
+                view.revealProblem(); return false;
+            }
+        }
     }
     for (const view of candidates) {
         if (view.settingsSignature() !== signatures.get(view)) {
