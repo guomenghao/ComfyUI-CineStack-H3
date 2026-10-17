@@ -1,132 +1,94 @@
 # CineStack H3 / 影栈
 
-[English](README_EN.md) · [分段 seed 与仅二采](docs/per-segment-seed-refine-only.md) · [迁移指南](docs/migration.md) · [发布准备](docs/publishing.md)
+**满意的片段留下，需要修改的片段重做。**
 
-当前版本 **0.6.10** 支持按连接线对局部重做施加双向接点约束；保留独立 seed、仅二采和滚动整片导出。见 [双向接点与缓存](docs/bidirectional-junctions.txt)。
+面向 AI 视频创作者、工作流搭建者与小型制作团队的 **ComfyUI H3 多段生成与精修工作台**。逐段固定 seed，确认一采后再精修，利用相邻片段缓存约束接点，并通过滚动生成和文件视频输出完成整片交付。
 
-## 工作流设置与文件接线检查（0.6.10）
+**分段可控 · 缓存可查 · 局部重做 · 完整导出**
 
-修复重新载入工作流时丢失滚动生成、低内存和诊断设置的问题。保存/API 导出时同步编辑器最新设置；提交前检查实际执行方式、滚动和导出方式是否与界面一致。
+[English](README_EN.md) · [制作案例](docs/production-cases.md) · [示例工作流](example_workflows/README.md) · [安装](#安装与更新) · [变更日志](CHANGELOG.md)
 
-`first_pass_video` / `final_video` 是滚动文件输出。普通模式接这两个端口时，运行前明确提示，并提供“开启滚动生成”按钮；不会自动切换或生成。绕过前端时，后端在导演台准备/采样前报错。原 IMAGE/AUDIO 工作流继续使用旧行为。已有一采要只跑二采时，请明确选择“仅二采”，不要依赖“跟随工作流”的缓存自动选择。详见 [设置与接线检查](docs/submission-settings.txt)。
+当前 H3 版本 **0.6.10**，通过 Git 安装；尚未发布到 Comfy Registry。影栈当前提供 H3 生成模块，完整本地影视平台是后续方向。
 
-## 导演台 → DLSS 内存交接（0.6.9）
+## 把返工留在需要修改的片段里
 
-生成完成后，先通过 ComfyUI 卸载模型并释放可重新加载的动态 host/pinned 缓冲，再合并视频；合并后的分段输出共享整片存储，避免下游缓存再保留一套分段像素。阶段日志新增 `export_model_release_*` 和 `export_frame_handoff_after`。
+| 制作时遇到的问题 | 影栈怎么处理 |
+| --- | --- |
+| 多段里只有一段不满意，想独立尝试 | 每段可固定一采 seed，只运行勾选段；留空仍继承全局 seed |
+| 一采已经满意，希望精修时保留它 | **仅二采**只使用匹配的一采缓存；缺失、失配或损坏时说明原因并停止 |
+| 重做中间段，希望承接前后画面 | 开启段间引导后，连接线决定是否读取前段尾部、未选后段首帧作为约束 |
+| 局部返工后还要交付完整视频 | **全部导出＋滚动生成**复用未选段已有结果，按时间轴合成完整视频 |
+| 段数增加，整片画面不断占用内存 | 滚动生成保留当前段和必要的相邻数据，通过文件视频交接与磁盘合并减少画面累积 |
 
-配合 [DLSS 插件 0.2.1](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux)，只连接 DLSS 的 VIDEO 输出时自动逐帧处理并输出文件视频。0.2.1 修复临时封装导致帧率漂移、视频加速及音轨截短的问题；**必须更新 DLSS 仓库，仅更新导演台不包含该修复**。普通 IMAGE 工作流仍保留整片张量；需要随段数保持较低内存时，使用「全部导出＋滚动生成」，将导演台 `final_video` 直接接到 DLSS `video`，`first_pass_video` 单独接 SaveVideo。详见 [交接说明](docs/dlss-handoff.txt) 和 [时间轴与分阶段保存](docs/dlss-timing-0.2.1.txt)。
+固定 seed 便于管理分段尝试，不保证跨模型、软件版本或设备逐像素复现。缓存是否可复用，还取决于输入、模型和采样设置等匹配条件。
 
-## 普通全部导出内存修复（0.6.8）
+## 制作案例：五段完成，只返工第 3 段
 
-普通模式合并改为一次分配最终画面，再在输出中修正接缝；避免为开头 12 帧累积整段副本。保留输入画面和已有缓存，结果与旧算法逐像素对比验证。普通全部导出默认增加阶段内存诊断，保存在 `output/cinestack_diagnostics/<时间_运行ID>/memory_diagnostics.jsonl`。
+这是基于项目实际返工需求整理的操作场景，不是耗时或画质基准测试。
 
-普通 IMAGE 输出仍需要整片画面驻留内存；超分、NR、补帧的内存由下游插件管理。长片仍建议使用滚动生成和文件 VIDEO 输出。参见 [普通合并与诊断](docs/standard-merge-memory.txt)。
+1. 已有五段结果，保留第 1、2、4、5 段，只勾选第 3 段，调整它的一采 seed。
+2. 开启段间引导。2—3 相连时读取第 2 段尾部；3—4 相连且第 4 段未选中时，读取第 4 段首帧约束结尾。断开哪侧，取消哪侧约束。
+3. 选择 **仅一采**，检查新结果。满意后保持一采相关设置，选择 **仅二采**精修第 3 段。
+4. 使用 **全部导出＋滚动生成**，复用其余段已有的最终视频，输出完整时间轴。只要本轮选中段文件时，使用 **分段导出＋滚动生成**。
 
-## 滚动视频保存与预览（0.6.7）
+```mermaid
+flowchart LR
+    A[第 2 段已有尾部] --> B[第 3 段重做一采]
+    C[第 4 段已有首帧] --> B
+    B --> D[确认后仅二采]
+    D --> E[复用第 1、2、4、5 段并导出整片]
+```
 
-滚动生成完成后，在导演台 **分段工作台 → 滚动视频 · 最近完成结果** 分别查看一采和最终视频，点击 **预览视频** 或 **下载到本机**；展开 **服务器保存位置** 可查看已有文件位置。
+未选邻段只读取必要边界，完整导出复用其已有视频，不自动重新采样邻段。所需缓存或文件缺失会明确提示；右侧约束是画面首帧，不是反向音频或未来运动生成。接点的实际画面与声音效果需要看片确认。
 
-需要使用保存视频节点时，直接连接导演台新增的 **一采视频 · 文件（first_pass_video）** / **最终视频 · 文件（final_video）** 到官方 **SaveVideo** 的 VIDEO 输入。两路分别连接两个 SaveVideo，并设置不同文件名前缀；格式与编码选择 `auto`。不经过 CreateVideo，也不要使用需要 IMAGE 输入的 Video Combine。这是对已保存 MP4 的文件传递，兼容流时只重新封装，不把整片帧加载成张量。
+[查看完整操作步骤、缓存前提及检查项 →](docs/production-cases.md)
 
-全部导出提供完整时间轴；分段导出只提供本轮选中段。仅一采的最终入口明确显示未生成。局部二采可复用各段已有一采视频合成完整对比片，若一采文件不足会列出缺失段，保留最终片并阻断一采 VIDEO 口，不偷偷生成或用部分视频冒充全片。原 8 个输出位置不变；普通模式继续使用旧 IMAGE/AUDIO 接线。详见 [接线与验证](docs/rolling-video-delivery.txt)。
+## 从一采确认，到精修与交付
 
-## 采样阶段 Host/pinned 缓冲区修复（0.6.6）
+- **分段工作台：** 集中查看缩略图、计划帧数、生效 seed 和缓存状态；通过明显的仅一采、仅二采、跟随工作流按钮选择执行阶段。
+- **运行前检查：** 检查执行方式、缓存和文件端口接线，提供问题段与处理入口。检查不会代替你启动重新生成。
+- **两路结果：** 一采和最终结果分别预览、下载或连接 SaveVideo，方便比较并保留原片。
+- **多种 H3 入口：** 支持 t2v / i2v / fl2v / r2v / v2v / rv2v、外部素材组与导演包；继承上游 Refine、SelfLift、Semantic Bridge、FaceRefine 等能力，各自需要相应模型及依赖。
 
-补齐导演台内部每次采样后的 ComfyUI 预取与 cast 缓冲区清理：在动态模型仍可访问时释放临时补丁 HostBuffer，保留基础权重 pinned 缓存及原模型卸载策略。一采、二采/N采和 SelfLift 共用此路径，异常退出也执行；不依赖是否勾选段间卸载。
+“仅二采”需要已启用并接好 Refine（`refine` 或 `upscale`）及二采 SIGMAS。`latent_upscale` 仅放大 latent；FL2V 二采需关闭 `skip_fl2v`。缓存标记用于初查，执行时仍会完整校验。
 
-新增 `sampler_execute_before/after` 与 `sampler_buffers_before/after`，区分基础权重、补丁 HostBuffer、Comfy 注册 pinned、PyTorch host allocator 和底层预取/cast 缓存。更新后重启，按原 19 段配置复跑并收集 JSONL，以核实实机释放量。代码已定位缺少的生命周期步骤，实际约 1.7 GiB 增量的全部归属仍待新日志确认。见 [原因、证据与验收](docs/host-memory-lifecycle.txt)。
+## 技术支撑：滚动生成与文件视频交接
 
-## 后处理内存峰值修复（0.6.5）
+长序列优先使用 **滚动生成＋文件 VIDEO 输出**。生成时处理当前段及必要连贯数据，合并时由 FFmpeg 逐区间读取文件，避免在 Python 中重新构造整片 IMAGE 张量。
 
-滚动／低内存生成时，色调匹配保留必要的一份独立导出副本；随后释放过期解码引用，开头 12 帧的亮度接缝修正直接复用该副本，避免再次复制整段画面。相同裁剪视图的重复分支只处理一次；不同引导、不同视图或借用的一采缓存仍保留隔离，避免串改画面。
+| 模式 | 输出范围与用途 |
+| --- | --- |
+| 全部导出＋滚动生成 | 生成勾选段，复用未选段已有视频，交付完整时间轴 |
+| 分段导出＋滚动生成 | 仅交付本轮勾选段 |
+| 普通模式 | 保留原 IMAGE/AUDIO 接线；完整 IMAGE 输出仍需要整片内存 |
 
-新增 CPU 转换、色调匹配、原始画面引用释放、修脸、接缝、缓存／边界保存和导出阶段诊断。旧工作流无需修改，独立 seed、仅二采、连接线约束及滚动导出规则不变。此修复针对已确认的临时副本峰值，不保证 64 GiB 环境承载任意模型／分辨率，也未将 CPU 回归视为真实 19 段 GPU 验证。见 [验证记录](docs/retest-0.6.5-2026-10-14.txt)。
+滚动模式接线：
 
-## 阶段级内存诊断（0.6.4）
+```text
+导演台 first_pass_video ──→ SaveVideo（一采）
+导演台 final_video      ──→ SaveVideo（最终/二采原片）
+                       └─→ 可选后处理链
+```
 
-滚动生成默认启用只读诊断，无需修改旧工作流。控制台搜索 `CineStack MEM:`，每次运行的输出目录同步保存 `memory_diagnostics.jsonl`，中途异常也保留已有记录。更新并重启服务后复跑，将该文件与生成日志一起提供即可。
+文件端口直接接官方 SaveVideo，格式/编码使用 `auto`；不经过 CreateVideo 或要求 IMAGE 的 Video Combine。普通模式接文件端口会提示开启滚动生成。仅一采时，尚未生成的最终入口不可用。
 
-诊断记录条件编码、一采/缓存复用、精修轮次、VAE 解码、持续编码、引用清理及合并阶段的内存变化；统计导演台可见的底层张量存储并去重，补充 Linux 匿名/文件内存、glibc 分配器、容器内存及模型管理记录数量。不会主动卸载模型、调用 malloc_trim 或改变采样。统计范围和日志读法见 [内存诊断说明](docs/memory-diagnostics.txt)。这次增加定位能力，不宣称已修复真实模型的 RAM 增长。
+滚动模式降低画面累积，不等于恒定总内存或永不 OOM：模型驻留、当前段尺寸、VAE 和下游节点仍影响峰值。磁盘合并也有读取、编码及存储开销。阶段诊断可帮助定位问题，不能替代目标设备实测。
 
-## 执行按钮与运行前提示（0.6.3）
+[滚动生成](docs/rolling-generation.txt) · [完整导出](docs/rolling-full-export.txt) · [保存与预览](docs/rolling-video-delivery.txt) · [内存诊断](docs/memory-diagnostics.txt)
 
-导演台时间轴上方的「分段工作台」现在直接显示 **仅一采 / 仅二采 / 跟随工作流** 三个按钮，选中状态可见；旁边是「检查并运行」。本轮段数、滚动生成和导出范围也会显示。
+## 已有满意原片，只调整后处理
 
-- 旧工作流保留原执行方式；「跟随工作流」就是原来的「按原接线」，不会自动改成一采或二采。
-- 「滚动生成＋全部导出」遇到「先确认一采」时，界面提前说明冲突，提供「改为仅一采 / 改为仅二采」。这些按钮只修改设置，不自动提交任务。
-- 仅二采缺少或失配缓存时，可点击「查看问题段」展开差异，或「重新检查缓存」；不会自动重跑一采。
-- 工作台与 ComfyUI 顶部运行均接入预检查；标准图中未参与输出、静音/绕过及局部运行范围外的导演台不会阻挡其他任务。后端仍执行完整校验，浏览器缓存检查不能替代 latent、连接数据等运行时校验。
+二采已经满意时，可以将已保存的原片交给 LoadVideo，再进行 SR、NR 或补帧，无需重跑导演台采样。保留二采原片，并分别保存各阶段结果，才能判断画质变化发生在哪一步。
 
-更新后重启 ComfyUI，再刷新浏览器。没有发布到 Comfy Registry。
+可选搭配独立的 [DLSS 插件](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux)。其 **0.2.1** 提供帧率/音轨修复与时长检查节点；需要单独安装或更新，更新影栈不包含该插件。文件流式路径要求只使用相应 VIDEO 输出；接 IMAGE 输出仍可能保留整片画面。
 
-## 前端缓存更新（0.6.2）
+现有 744 帧、24 fps、31 秒原片的 CPU 文件处理回归验证了两次处理后的帧数、节奏与音轨时长；这不是 GPU SR/NR 画质或补帧拖影验收。超分、降噪和补帧需按素材判断是否采用。
 
-影栈脚本及其依赖使用 `v版本号-内容指纹/文件名.js` 路径，更新后自动避开旧固定地址的代理/浏览器缓存。请先 `git pull --ff-only`，再重启 ComfyUI、刷新页面。版本接口还会返回 `frontend_asset_version`，可与 `/extensions` 返回的资源路径核对。见 [前端缓存验证](docs/frontend-cache.md)。
+[后处理接线与分阶段保存 →](docs/dlss-timing-0.2.1.txt)
 
-## 工作流版本显示（0.6.1）
+## 安装与更新
 
-旧工作流打开、新建或粘贴影栈节点时，节点版本标记会同步为当前 ComfyUI 服务加载的插件版本。保存工作流后会保留更新后的标记；seed、参数和连线不变。更新代码后需重启 ComfyUI，再刷新浏览器并重新打开工作流。版本接口不可用时保留原标记并输出浏览器警告，不猜测版本。
-
-可在服务器执行 `curl -fsS http://127.0.0.1:8188/cinestack/h3/version` 核对运行版本（端口按实际设置调整）。此版本号不代表已经发布到 Comfy Registry。详见 [迁移说明](docs/migration.md)。
-
-## 连接线与局部重做（0.6.0）
-
-开启“段间引导”，只勾选第 4 段重做一采：3—4 相连时读取第 3 段导出尾部；4—5 相连且第 5 段未选中时，用第 5 段导出首帧约束第 4 段结尾。断开哪侧，就取消哪侧的接点约束。连线优先于手动首尾图。连续选中多段时组内顺序生成，只有组选区边界读取未选邻段。缺缓存会提前列出段号和左右接点，不自动重跑邻段。
-
-未选邻段只读取首尾小缓存（左侧通常 22 帧、右侧 1 帧），不整段加载/解码邻段 AV。旧 RGB 缓存用 mmap/FFmpeg 读取区间，已有滚动视频用索引定位；旧版若只剩 AV 且没有可读的视频/画面缓存，需要恢复对应结果或明确重做邻段。仅二采保留当前段一采时的约束快照，改变连接线须先明确重做一采。旧工作流不改变节点 ID 或控件位置，原连线字段继续有效；旧一采缓存可继续二采，但不会追补原本没有的右侧约束。
-
-右侧目前是画面首帧约束，不是未来音频或运动窗口的反向生成。画面动作、声音接缝仍需 GPU 实测验收。详见 [使用与兼容说明](docs/bidirectional-junctions.txt)。
-
-## 滚动生成与完整导出（0.5.0 起）
-
-开启 **滚动生成（当前段＋上一段）**，再选择导出方式：
-
-- **全部导出＋滚动生成**：只生成勾选段，按时间轴顺序复用未选段已有视频，输出 `timeline_first_pass.mp4`（仅一采）或 `timeline_final.mp4`（仅二采/自动最终结果）。
-- **分段导出＋滚动生成**：只输出本轮勾选段，沿用 `first_pass.mp4` / `final.mp4`；不会补齐未选段。
-
-首次复用 0.4.x 已有整片时，在“旧版完整结果 manifest（可选）”填写服务器上对应的完整滚动输出目录或 `manifest.json` 路径。新版本之后按同一缓存名和节点自动记录；不要删除被复用的源视频目录。缺少阶段、文件丢失、身份不符时会说明段号并停止，不自动生成其他段。
-
-采样保留当前段和上一段的必要数据，整片合并由 FFmpeg 从磁盘逐区间处理，不把全部画面加载到 Python 内存。部分重做的整片导出需要读取和重编码视频，有额外 CPU/磁盘耗时；不是零成本拼接。
-独立 seed、严格仅二采继续保留；完整 IMAGE/AUDIO 接口阻断，使用报告中的文件路径。未选段不重算接缝，替换段两侧需要检查连贯性。
-未开启滚动的旧工作流和旧低内存模式保持原导出方式；连接线使用上述接点语义。已开启滚动且选“全部导出”的旧工作流会采用新的完整导出语义。详见 [滚动说明](docs/rolling-generation.txt)。
-
-## 低内存落盘（0.3.0）
-
-在输出设置中勾选 **低内存落盘**，逐段保存视频和一采缓存，保留必要的上一段连贯数据后释放旧段画面；从磁盘分别合并一采/成片。
-**此模式只交付本轮勾选段，并阻断完整 IMAGE/AUDIO 输出口。** 视频和 `manifest.json` 位于报告中的 `output/minimax_seg_export/时间戳/`；下游无需再用 CreateVideo/SaveVideo 保存。
-每段独立 seed、仅二采和 22 帧连贯保留。开关默认关闭，关闭后继续原导出方式；已有工作流不会自动改变。
-详见 [低内存使用说明](docs/low-memory-mode.txt)。
-
-## 导演台分段工作台
-
-导演台内可统一浏览每段缩略图、计划帧数/时长、生效一采 seed 和缓存状态，直接点击片段进入原编辑区。
-seed 留空继承全局，填写数字固定本段；“固定当前值”将继承值保存为分段 seed。总览和原卡片输入即时同步。
-
-- **按原接线**：旧工作流默认模式，保留 Refine、确认一采、脸修等原有行为。
-- **仅一采**：重新生成选中段的一采并保存 AV 缓存，跳过 Refine 与脸修。
-- **仅二采**：需启用并连接 Refine（refine/upscale）及二采 SIGMAS；只使用匹配的一采缓存，失配停止。
-
-“加入 ComfyUI 队列”提交当前工作流。运行范围与原“选择运行”同步；执行方式不修改 Refine 控件或图接线。
-缓存标记是元数据检查结果，完整 latent 校验在执行前进行；成片缓存存在不代表已经通过二采。
-界面新增设置写在 `timeline_data.executionMode`，不增加位置控件；工作流与导演包保存后保留。
-
-**影栈（CineStack）面向未来的自动化、本地影视制作工作流平台。**
-当前仓库是平台的首个 H3 生成模块，以 ComfyUI 自定义节点形式提供多段音视频导演台。
-完整独立平台、剧本管理、跨模型调度和自动剪辑属于后续规划，当前版本没有实现这些能力。
-
-项目维护：**guomenghao**。来源、修改范围及授权信息集中见 [NOTICE](NOTICE) 和 [来源说明](docs/upstream/README.md)。
-
-## 当前能力
-
-- 多段 t2v / i2v / fl2v / r2v / v2v / rv2v 时间轴、外部素材组和导演包导入导出。
-- 每段独立固定一采 `first_pass_seed`；空白继承导演台全局 seed，`0` 也是有效固定值。
-- 严格“仅二采”：只读取匹配的一采缓存，缺失、失配或损坏时列出具体段和原因，停止运行。
-- 保留 Refine、SelfLift、Semantic Bridge、FaceRefine 等上游能力；特定功能需要各自模型和依赖。
-- 独立 `CineStackH3Director*` 节点 ID、`/cinestack/h3/*` 路由和事件，提供旧工作流迁移。
-
-## 安装
-
-使用支持官方 MiniMax H3 的 ComfyUI（上游最低要求为 0.30.0），在其 Python 环境安装：
+需要支持官方 MiniMax H3 的 ComfyUI、对应模型和依赖。在**运行 ComfyUI 的同一 Python 环境**执行，路径按实际安装位置调整：
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -134,65 +96,49 @@ git clone https://github.com/guomenghao/ComfyUI-CineStack-H3.git
 python -m pip install -r ComfyUI-CineStack-H3/requirements.txt
 ```
 
-Linux 云端环境（ComfyUI 位于 `/root/ComfyUI`）：在运行 ComfyUI 的同一 Python 环境执行：
+已通过 Git 安装时：
 
 ```bash
-cd /root/ComfyUI/custom_nodes
-git clone https://github.com/guomenghao/ComfyUI-CineStack-H3.git
-python -m pip install -r ComfyUI-CineStack-H3/requirements.txt
-```
-
-Git 安装后更新：
-
-```bash
-cd /root/ComfyUI/custom_nodes/ComfyUI-CineStack-H3
+cd ComfyUI/custom_nodes/ComfyUI-CineStack-H3
 git pull --ff-only
 python -m pip install -r requirements.txt
 ```
 
-手动复制的同名文件夹请先备份到 `custom_nodes` 外，再首次克隆。安装/更新后重启 ComfyUI，并强制刷新浏览器。
+更新后重启 ComfyUI、刷新页面。节点位于 `CineStack/H3`。手动复制的同名文件夹需先备份到 `custom_nodes` 外再克隆；不要覆盖删除唯一缓存或运行库。本仓库不含模型权重、用户素材或 ComfyUI 本体。
 
-重启 ComfyUI，在 `CineStack/H3` 分类添加节点，或加载 [example_workflows](example_workflows)。
-本仓库不包含模型权重、用户素材或 ComfyUI 本体。模型类型及额外注意事项参考
-[上游使用说明存档](docs/upstream/README.md)与[官方 H3 教程](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)。
+[官方 H3 教程](https://docs.comfy.org/tutorials/video/minimax/minimax-h3) · [模型与示例说明](example_workflows/README.md)
 
-## 五段独立一采，再统一二采
+## 从一个适合你的示例开始
 
-1. 制作一采时关闭 `refine_only`，逐段设置 seed。需要先确认一采时启用 `confirm_first_pass`。
-2. 不满意哪一段，只改变该段 seed，并选择运行该段。
-3. 全部满意后全选五段，接 Refine 与二采 SIGMAS，启用 `refine_only`。
-4. 一采缓存全部匹配后直接二采；全局 seed 的变化不影响已固定分段 seed。
+| 目标 | 入口 |
+| --- | --- |
+| 了解基本生成与接线 | [文生视频示例](example_workflows/minimax_h3_director_t2v.json) |
+| 使用人物或素材参考 | [参考生成示例](example_workflows/minimax_h3_director_r2v.json) |
+| 学习一采与二采接线 | [二采示例](example_workflows/minimax_h3_director_二采_加速.json) |
+| 局部返工并导出整片 | [制作案例与滚动接线说明](docs/production-cases.md) |
+| 使用已有二采原片做后处理 | [文件视频后处理说明](docs/dlss-timing-0.2.1.txt) |
 
-`refine_only` 适用于 Refine 的 `refine` / `upscale`，不适用于只放大的 `latent_upscale`。
-FL2V 需要明确关闭 `skip_fl2v` 才能二采。普通模式保持上游自动生成行为。
-详细缓存前提和错误示例见[使用说明](docs/per-segment-seed-refine-only.md)。
+仓库 JSON 示例是基础接线模板，不代表已预设滚动生成或严格仅二采；导入后配置自己的模型、素材、执行方式与输出。不要在未核对设置时直接运行陌生工作流。
 
-## 旧工作流与缓存
+## 兼容、验证与已知边界
 
-旧版缺少分段 seed、仅二采字段时继续继承全局 seed、默认关闭仅二采。
-只安装影栈时，打开普通旧工作流会在内存中迁移节点 ID，保留节点编号、接线、控件和时间轴。
-同时安装原版时，原版工作流仍使用原版；可使用[迁移工具](docs/migration.md)明确转换为影栈。
-API prompt 必须先显式转换，再提交。
+- **旧工作流：** 保留原位置控件及前八个输出位置；文件 VIDEO 输出追加在后。缺少新字段时保留旧行为。只安装影栈时可迁移普通旧工作流；与原版共存或提交 API prompt 时按[迁移指南](docs/migration.md)显式处理。
+- **已有缓存：** 继续使用 `output/minimax_seg_cache/`；保持缓存名、节点 ID 和匹配参数，保留被引用的源视频。修改一采条件或连接关系可能使缓存失配，仅二采不会自动重做一采。原版与影栈共存时使用不同缓存名。
+- **连贯范围：** 仅二采复用该段一采时保存的接点约束；旧缓存不会自动补上原先不存在的右侧约束。[详细规则](docs/bidirectional-junctions.txt)
+- **验证范围：** 提供 CPU 控制流、缓存、实际编解码及前端宿主模拟回归。实机排错记录不构成所有模型、硬件和长片配置的性能保证。[自动检查](https://github.com/guomenghao/ComfyUI-CineStack-H3/actions)与[变更日志](CHANGELOG.md)可查看验证范围。
 
-为兼容旧数据，缓存目录仍使用 `output/minimax_seg_cache/`，素材包目录也保留旧路径。
-复用缓存需要保持 `cache_name`、节点 ID 和实际参数；原版与影栈执行时应使用不同缓存名以免互相覆盖。
-更名不会恢复不存在的缓存，也不会绕过失配检查。
+## 下一步：走向本地影视制作工作台
 
-## 验证与发布状态
+当前重点是把分段生成、确认、精修与交付做好。未来候选方向包括项目与素材版本管理、任务依赖和失败恢复、跨模型调度、剪辑与声音组织，以及独立桌面工作台。这些属于规划，当前仓库未实现完整平台能力。
 
-CPU 回归覆盖真实计划、缓存和执行控制流；浏览器回归使用真实前端模块与 ComfyUI 宿主模拟。
-GPU 模型生成、实际 ComfyUI 环境与长视频效果尚待目标设备验收。
-当前版本 `0.6.10` 包含滚动生成、低内存落盘、分段工作台、官方 H3 导入修复及全面复查修复；尚未发布到 Comfy Registry。详见 [复查记录](docs/review-2026-10-14.txt)。
+[查看平台路线](docs/roadmap.md) · [提交问题或建议](https://github.com/guomenghao/ComfyUI-CineStack-H3/issues)
 
-```bash
-python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements-test.txt
-python -m unittest discover -s tests -p 'test_segment_seed_refine_only.py' -v
-python -m unittest discover -s tests -p 'test_cinestack_release.py' -v
-python tools/check_release.py
-python -m unittest discover -s tests -p 'test_official_minimax_imports.py' -v
-python -m unittest discover -s tests -p 'test_director_execution_mode.py' -v
-```
+反馈问题时，请提供版本、执行方式、导出范围、相关日志与脱敏的最小工作流；不要上传密钥或无权公开的素材。
 
-[GitHub 仓库](https://github.com/guomenghao/ComfyUI-CineStack-H3) ·
-[变更记录](CHANGELOG.md) · [平台路线](docs/roadmap.md) · [Apache-2.0](LICENSE)
+## 来源与维护
+
+由 **guomenghao** 维护，基于 **AIMixer 与贡献者的 MiniMax H3 Director** 扩展。影栈重点增加分段固定 seed、严格缓存精修、局部返工、滚动交付及相应检查与诊断；上游能力和第三方插件分别保留来源说明。
+
+[Apache-2.0](LICENSE) · [NOTICE](NOTICE) · [上游说明](docs/upstream/README.md) · [完整变更日志](CHANGELOG.md)
+
+这是独立衍生项目，不是 MiniMax、AIMixer 或 ComfyUI 官方产品。

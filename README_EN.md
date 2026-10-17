@@ -1,91 +1,92 @@
-# CineStack H3
+# CineStack H3 / 影栈
 
-[中文](README.md) · [Migration](docs/migration.md) · [Publishing](docs/publishing.md)
+**Keep the clips you like. Rework the ones that need it.**
 
-CineStack is a planned local cinematic production workflow platform. This repository is its first H3 generation module for ComfyUI, **not the complete future platform**.
+A **multi-segment H3 generation and refinement workbench for ComfyUI**, built for AI video creators, workflow builders and small production teams. Fix seeds per segment, approve first passes before refinement, use neighbouring clips to constrain junctions, and deliver the complete timeline through rolling generation and file-backed video outputs.
 
-Maintained by **guomenghao**. Source attribution and applicable licenses are documented in [NOTICE](NOTICE) and [the upstream archive](docs/upstream/README_EN.md).
+**Per-segment control · Inspectable caches · Selective rework · Complete exports**
 
-## Standard All export memory fix (0.6.8)
+[中文](README.md) · [Production walkthroughs](docs/production-cases.md#english) · [Example workflows](example_workflows/README.md) · [Install](#install-and-update) · [Changelog](CHANGELOG.md)
 
-Allocate the combined image buffer once and correct seams in its owned views instead of retaining corrected whole-clip copies. Source tensors and cache identities remain unchanged. Standard All export now records allocation, copy and seam diagnostics under `output/cinestack_diagnostics/<time_run>/memory_diagnostics.jsonl`. IMAGE delivery still requires full-film RAM; use rolling file VIDEO outputs for long timelines. Downstream SR/NR/interpolation memory is outside this fix. See [details](docs/standard-merge-memory.txt).
+Current H3 version: **0.6.10**, installed through Git. Not yet published to Comfy Registry. This repository provides the H3 module; a complete local filmmaking platform is a future direction.
 
-## Rolling video delivery (0.6.7)
+## Keep revisions focused on the clips that need them
 
-The Director workbench now shows separate first-pass/final file previews, downloads and server locations. Two appended VIDEO outputs (`first_pass_video`, `final_video`) connect directly to official SaveVideo; use different filename prefixes and format/codec `auto` to preserve compatible streams. No CreateVideo or IMAGE-based Video Combine is needed. The original eight output indices stay unchanged.
+| Production problem | What CineStack provides |
+| --- | --- |
+| One clip needs another attempt | Fix its first-pass seed and run only checked segments; blank seeds still inherit the global value |
+| An approved first pass should survive refinement | **Second pass only** uses matching first-pass caches; missing, mismatched or damaged caches stop with reasons |
+| A replacement needs to connect to adjacent footage | With continuity enabled, links control constraints from the previous tail and an unselected next clip’s first frame |
+| A local revision still needs a complete deliverable | **All export + Rolling** reuses saved unchecked clips and composes the full timeline |
+| Longer sequences accumulate decoded frames | Rolling generation and file-backed delivery reduce accumulated pixel storage by retaining current and necessary neighbouring data |
 
-All export delivers the full timeline, while Segment export delivers only selected segments. An unproduced stage is explicitly unavailable. Partial refinement can compose the full first-pass comparison from saved ranges; missing first-pass files block only that comparison, never trigger first-pass generation or masquerade selected-only video as a complete film. See [delivery scope and checks](docs/rolling-video-delivery.txt).
+Fixed seeds help manage attempts; they do not guarantee pixel-identical results across models, software versions or devices. Cache reuse also depends on matching inputs, model and sampling settings.
 
-## Sampling host/pinned buffer lifecycle (0.6.6)
+## Production scenario: five clips, rework only clip 3
 
-Run ComfyUI's prefetch-then-cast cleanup after every internal sampling pass, including failures, before dropping model patchers or optional unloading. Dynamic patch HostBuffers are released while base-weight pin caches and unload policy remain intact. First/refine/SelfLift calls share this path. Older hosts feature-detect the APIs.
+This walkthrough comes from the project’s revision needs. It is not a timing or visual-quality benchmark.
 
-New sampler checkpoints report separate Comfy pinned, per-model weight/patch HostBuffers, optional PyTorch host allocator statistics and cast/prefetch counts. This fixes a confirmed lifecycle omission; attribution of the entire observed ~1.7 GiB/segment needs the next real-server trace. See [evidence and acceptance](docs/host-memory-lifecycle.txt).
+1. Keep completed clips 1, 2, 4 and 5. Select only clip 3 and change its first-pass seed.
+2. Enable continuity. A connected 2–3 edge supplies clip 2’s tail; a connected 3–4 edge supplies clip 4’s first frame when clip 4 is unselected. Disconnect either edge to remove that constraint.
+3. Run **First pass only** and review it. Once approved, keep first-pass settings unchanged and choose **Second pass only** for clip 3.
+4. Use **All export + Rolling** to combine the new result with saved final videos for the other clips. Choose **Segments + Rolling** when you only want the selected clips.
 
-## Postprocessing memory peak fix (0.6.5)
+```mermaid
+flowchart LR
+    A[Saved tail of clip 2] --> B[Rebuild first pass of clip 3]
+    C[Saved first frame of clip 4] --> B
+    B --> D[Approve and refine only]
+    D --> E[Reuse clips 1, 2, 4, 5 and export the timeline]
+```
 
-Rolling/disk generation reuses the isolated export buffer produced by opening grade for the 12-frame additive seam correction, releasing obsolete decoder aliases beforehand. Identical cropped views are deduplicated; different guides/views and borrowed cached inputs remain isolated. Legacy functional callers keep their input-preserving behavior.
+Only required neighbour boundaries are read for conditioning. Unselected clips are not automatically resampled. Required caches and files must exist; missing data is reported. The right constraint is a visual still, not reverse audio or future-motion generation. Review both picture and sound at the joins.
 
-New diagnostic checkpoints bracket CPU conversion, opening grade, reference release, optional face refinement, seams, segment/boundary caches and export staging. Seeds, strict refinement, junctions and old workflow defaults remain unchanged. This removes a verified temporary-copy peak; real GPU/RAM validation on the user's 19-shot workload is still required. No Registry publication.
+[Read the steps, cache prerequisites and checks →](docs/production-cases.md#english)
 
-## Stage memory diagnostics (0.6.4)
+## From first-pass approval to delivery
 
-Rolling generation now enables read-only stage observations by default. Search the console for `CineStack MEM:` and collect `memory_diagnostics.jsonl` beside this run's output. The trace covers conditioning, sampling/cache reuse, refinement passes, decode, stream encoding, reference cleanup and merge. It reports process memory, deduplicated visible tensor storages, available glibc allocator counters, cgroup memory and model record counts. It never trims allocators, unloads models or changes sampling. These observations diagnose growth; they do not themselves release memory. Set `CINESTACK_MEMORY_DIAGNOSTICS=0` before starting ComfyUI to disable. See [scope and interpretation](docs/memory-diagnostics.txt).
+- **Segment workbench:** inspect thumbnails, planned frames, effective seeds and cache state. Visible First pass only, Second pass only and Follow graph buttons select the execution stage.
+- **Preflight:** check execution intent, caches and file-port connections before queuing, with affected segments and recovery actions. Recovery does not automatically start regeneration.
+- **Separate results:** preview, download or save first-pass and final videos independently so the source remains available for comparison.
+- **H3 entry points:** t2v / i2v / fl2v / r2v / v2v / rv2v, external groups and Director packs. Inherited Refine, SelfLift, Semantic Bridge and FaceRefine features require their respective models and dependencies.
 
-## Visible execution controls (0.6.3)
+Second pass only requires an enabled, connected Refine configuration (`refine` or `upscale`) and second-pass SIGMAS. `latent_upscale` only enlarges latents; FL2V refinement requires `skip_fl2v=false`. UI cache badges are preliminary checks; execution performs full validation.
 
-The segment workbench now offers **First pass only / Second pass only / Follow graph** buttons with a visible selected state, next to **Check and run**, plus the selected segment count and output scope. Existing workflows keep their execution intent.
+## Technical foundation: rolling generation and file delivery
 
-Rolling All export with legacy confirm-first behavior shows an inline explanation and stage-selection actions before submission. Recovery actions change settings only; they never queue automatically. Strict refinement offers cache retry and per-segment differences without first-pass fallback. Both the workbench and main ComfyUI Run route use preflight; inactive and unrelated standard-graph nodes do not block other outputs. Backend validation remains authoritative, including latent and junction checks. Restart ComfyUI and reload after updating. No Registry publication.
+For longer sequences, use **Rolling + file VIDEO outputs**. Generation keeps the current segment and necessary continuity data; FFmpeg composes saved ranges without reconstructing the entire timeline as a Python IMAGE tensor.
 
-## Frontend cache invalidation (0.6.2)
+| Mode | Delivery scope |
+| --- | --- |
+| All + Rolling | Generate selected clips, reuse saved unchecked videos, deliver the full timeline |
+| Segments + Rolling | Deliver only this run’s selected clips |
+| Normal mode | Keep legacy IMAGE/AUDIO wiring; complete IMAGE output still needs full-film memory |
 
-All plugin modules and dependencies share a `v<version>-<content fingerprint>/` URL directory. Old fixed-URL proxy/browser entries are bypassed after a server restart and page reload. The version endpoint reports `frontend_asset_version`, matching resource paths returned by `/extensions`. Host ComfyUI modules keep their canonical URLs.
+```text
+Director first_pass_video ──→ SaveVideo (first pass)
+Director final_video      ──→ SaveVideo (final / refined original)
+                          └─→ optional postprocessing
+```
 
-## Workflow version labels (0.6.1)
+Connect file outputs directly to official SaveVideo with format/codec `auto`, without CreateVideo or IMAGE-based Video Combine. Normal-mode file connections prompt you to enable rolling. A final stage that has not been generated is unavailable during first-pass-only runs.
 
-Existing, migrated, nested, newly created and pasted CineStack nodes now display the package version loaded by the current server. Save the workflow to retain refreshed metadata. Seeds, parameters and links are unchanged. Restart ComfyUI after updating, refresh the browser, and reopen the workflow. An unavailable version endpoint preserves saved metadata and emits a browser warning.
+Rolling reduces pixel accumulation; it does not guarantee constant total RAM or eliminate OOM. Model residency, segment size, VAE and downstream nodes still affect peaks. File composition incurs disk, encoding and storage costs. Stage diagnostics help locate problems; target-device testing remains necessary.
 
-Check the running version with `curl -fsS http://127.0.0.1:8188/cinestack/h3/version` (adjust the port). This is the installed runtime version, not a claim of Registry publication.
+[Rolling internals](docs/rolling-generation.txt) · [Full export](docs/rolling-full-export.txt) · [Video delivery](docs/rolling-video-delivery.txt) · [Memory diagnostics](docs/memory-diagnostics.txt)
 
-## Connected junctions (0.6.0)
+## Keep the approved original; adjust postprocessing separately
 
-With Segment continuity on, rebuilding only clip 4 uses clip 3's exported tail when 3–4 is connected, and clip 5's exported first frame when 4–5 is connected and clip 5 is unselected. Disconnect either edge to remove that constraint. Links override manual start/end stills. Selected islands generate forwards internally; only outside boundaries read unselected neighbours. Missing boundary caches stop with segment/side diagnostics before sampling.
+Load an already saved second-pass original with LoadVideo to try SR, NR or interpolation without running Director sampling again. Save the original and individual stages so you can locate where quality changes.
 
-Small exported boundary sidecars hold at most 56 tail frames plus one head frame; reads normally use 22 + 1 frames. Legacy RGB is mmap/range decoded; indexed rolling videos are streamed by frame range. No whole unselected neighbour AV decode. AV-only legacy caches without usable pixels/video need restored output/index or an explicitly requested neighbour rebuild. Strict second pass uses the first-pass constraint snapshot, not edited neighbour results. Changing links invalidates new first-pass snapshots; legacy first-pass caches remain readable without retroactively adding a right constraint.
+The optional [DLSS companion plugin](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux) **0.2.1** adds cadence/audio fixes and a video timing guard. Install or update it separately; updating CineStack does not update DLSS. Its streaming path requires VIDEO-only output use; consuming IMAGE outputs can still retain a whole film.
 
-Right constraints are visual stills, not reverse audio/motion conditioning. GPU, appearance and audio seam acceptance remain pending. Workflow node IDs, seeds, export scopes and manual-only Registry publishing remain unchanged. See [details](docs/bidirectional-junctions.txt).
+A CPU file-processing regression using an existing 744-frame, 24 fps, 31-second original preserved frame count, cadence and audio duration across two passes. That does not validate GPU SR/NR quality or eliminate interpolation ghosting. Decide which processing stages to use by reviewing your footage.
 
-## Rolling export (since 0.5.0)
+[Stage wiring and separate saves →](docs/dlss-timing-0.2.1.txt)
 
-Enable **Rolling generation**, then choose the existing export scope:
+## Install and update
 
-- **All + Rolling:** sample checked segments only, reuse saved video ranges for unchecked segments, and write `timeline_first_pass.mp4` or `timeline_final.mp4`.
-- **Segments + Rolling:** export only checked segments, retaining `first_pass.mp4` / `final.mp4` behavior.
-
-A durable index under the same node/cache key tracks saved stages and ranges. Missing, mismatched or modified results stop the run instead of regenerating unchecked segments. For a 0.4.x full rolling result, explicitly supply its server-side output folder or manifest.json in the optional legacy field; older manifests lack full identity metadata, so verify their segment order and assets. Keep referenced output videos on disk.
-
-Composition reads and re-encodes bounded ranges in FFmpeg and streams PCM, without a full-timeline Python IMAGE tensor. This adds CPU/disk work, not model inference. Unselected video lengths and handoffs are preserved; review replacement seams. Full IMAGE/AUDIO sockets remain blocked. Independent seeds and strict second pass remain supported.
-
-Non-rolling workflows and old disk mode are unchanged. Existing rolling workflows set to All now use full-timeline semantics. See [usage and migration](docs/rolling-full-export.txt) and [rolling internals](docs/rolling-generation.txt). Registry publishing remains manual; GPU acceptance is pending.
-
-## Features
-
-- Multi-segment H3 audiovisual timelines, external groups and Director packs.
-- Optional fixed first-pass seed per segment (blank inherits global; zero is valid).
-- Strict `refine_only`: validate selected cached AV latents before sampling. Missing, mismatched or corrupt caches report specific reasons and never trigger first-pass sampling.
-- Independent `CineStackH3Director*` node IDs, HTTP routes and progress events, with legacy workflow conversion.
-- Upstream Refine, SelfLift, Semantic Bridge and FaceRefine capabilities.
-
-## Low RAM disk delivery (0.3.0)
-
-Enable **Low RAM · save to disk** in Director output settings. It persists selected clips and first-pass AV caches, retains predecessor continuity data until consumed, then releases old RGB storage. First/final stages merge from disk.
-Full IMAGE/AUDIO sockets are blocked in this mode; use the file paths and `manifest.json` in the report. Only checked segments are delivered. Fixed seeds and strict second-pass reuse remain supported. The toggle defaults off for legacy workflows.
-See [disk-mode details](docs/low-memory-mode.txt). Real GPU/server memory acceptance remains pending.
-
-## Install
-
-Use a ComfyUI environment with official MiniMax H3 support (upstream minimum 0.30.0).
+Use ComfyUI with official MiniMax H3 support, the matching models and dependencies. Run these commands in **the Python environment used by ComfyUI**, adjusting paths to your installation:
 
 ```bash
 cd ComfyUI/custom_nodes
@@ -93,24 +94,49 @@ git clone https://github.com/guomenghao/ComfyUI-CineStack-H3.git
 python -m pip install -r ComfyUI-CineStack-H3/requirements.txt
 ```
 
-Restart ComfyUI; nodes appear under `CineStack/H3`. Model weights are not included.
+For an existing Git installation:
 
-Fix each segment's seed, generate and approve first-pass results, then select the segments,
-connect Refine SIGMAS and enable `refine_only`. Changing the global seed leaves fixed segment seeds unchanged.
-Use `refine` or `upscale`; FL2V requires `skip_fl2v=false`.
+```bash
+cd ComfyUI/custom_nodes/ComfyUI-CineStack-H3
+git pull --ff-only
+python -m pip install -r requirements.txt
+```
 
-Legacy UI workflows migrate in memory when upstream nodes are absent. With both plugins installed,
-use the explicit converter to select CineStack. API prompts require explicit conversion.
-The legacy cache path `output/minimax_seg_cache/` is preserved; use separate cache names for simultaneous installations.
+Restart ComfyUI and reload the page after updating. Nodes appear under `CineStack/H3`. Before cloning over a manually copied folder, back it up outside `custom_nodes`; preserve unique caches and runtime files. Model weights, user assets and ComfyUI itself are not included.
 
-## Release status
+[Official H3 guide](https://docs.comfy.org/tutorials/video/minimax/minimax-h3) · [Models and examples](example_workflows/README.md)
 
-Version 0.6.8 includes bidirectional junction constraints, rolling generation, low-memory disk delivery, the Director segment workbench, official H3 import fix, and cache/queue/strict-failure review fixes. CPU and real-editor browser fixture tests are provided.
+## Choose a starting point
 
-The workbench shows effective seeds, checked run scope, first-pass metadata and rendered-cache existence.
-Execution choices are Follow graph (legacy default), First pass only (save first-pass cache; skip refinement/face refinement),
-and Second pass only (matching cache required; never regenerate first passes). Queue submits the current ComfyUI workflow.
-Execution intent is stored in optional timeline JSON, without changing node IDs, connections or positional widgets.
-Cache labels are metadata checks; latent validation still runs before execution. Rendered-cache existence is not proof of a completed second pass.
-Actual ComfyUI and GPU/model generation acceptance remains pending; Registry publication is not yet completed.
-Publication is manually triggered after configuring your own publisher identity and Registry secret.
+| Goal | Start here |
+| --- | --- |
+| Learn basic generation and wiring | [Text-to-video example](example_workflows/minimax_h3_director_t2v.json) |
+| Work with character or asset references | [Reference-generation example](example_workflows/minimax_h3_director_r2v.json) |
+| Wire first-pass and refined outputs | [Refinement example](example_workflows/minimax_h3_director_二采_加速.json) |
+| Rework a clip and export the full timeline | [Production walkthrough](docs/production-cases.md#english) |
+| Postprocess an existing refined original | [File-video processing guide](docs/dlss-timing-0.2.1.txt) |
+
+Bundled JSON files are base wiring templates, not preconfigured rolling/strict-refine workflows. Set your models, assets, execution mode and outputs before running. Some linked technical guides are currently in Chinese.
+
+## Compatibility, evidence and limits
+
+- **Existing workflows:** positional widgets and the first eight output indices remain; file VIDEO outputs are appended. Missing new fields keep legacy behavior. Standard old workflows can migrate when only CineStack is installed; coexistence with upstream or API prompts requires the [explicit migration procedure](docs/migration.md).
+- **Existing caches:** retain `output/minimax_seg_cache/`, cache names, node IDs and matching parameters, plus referenced source videos. Changed first-pass conditions or links can invalidate reuse. Strict refinement never silently reruns the first pass. Use separate cache names when running both plugins.
+- **Junctions:** strict refinement reuses the segment’s saved first-pass constraints. Old caches do not acquire right-hand constraints retroactively. See [junction rules](docs/bidirectional-junctions.txt).
+- **Validation:** CPU control-flow/cache tests, real codec regressions and browser tests with a simulated ComfyUI host are provided. Individual server investigations are not performance guarantees for every model, machine or long-film configuration. See [automated checks](https://github.com/guomenghao/ComfyUI-CineStack-H3/actions) and the [changelog](CHANGELOG.md).
+
+## Toward a local filmmaking workbench
+
+The current focus is segment generation, approval, refinement and delivery. Candidate next steps include project/asset version management, task dependencies and recovery, multiple model backends, editing/audio organization and a standalone desktop workbench. These are plans, not implemented full-platform features.
+
+[Roadmap](docs/roadmap.md) · [Issues and suggestions](https://github.com/guomenghao/ComfyUI-CineStack-H3/issues)
+
+For bug reports, include the version, execution mode, export scope, relevant logs and a minimal workflow with private data removed. Do not upload credentials or assets you cannot publish.
+
+## Origins and maintenance
+
+Maintained by **guomenghao**, based on **MiniMax H3 Director by AIMixer and contributors**. CineStack extends per-segment seed control, strict cached refinement, selective rework, rolling delivery and their checks/diagnostics. Upstream features and third-party plugins retain their attribution.
+
+[Apache-2.0](LICENSE) · [NOTICE](NOTICE) · [Upstream documentation](docs/upstream/README_EN.md) · [Full changelog](CHANGELOG.md)
+
+An independent derivative, not an official MiniMax, AIMixer or ComfyUI product.
