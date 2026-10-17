@@ -1,5 +1,11 @@
 # Changelog
 
+## Real UI documentation — 2026-10-17 (package remains 0.6.10)
+
+- Add five actual ComfyUI browser captures and a timed screenshot GIF demonstrating clip-3-only selection, fixed seed changes, first/second-pass controls and rolling export settings.
+- Keep real missing-cache/Refine preflight blocks visible; distinguish a settings-only demo from generated footage or GPU validation. Add bilingual steps, capture environment and source-image hashes.
+- No sampling, runtime code, cache or workflow format changes; no Registry publication.
+
 ## Documentation update — 2026-10-17 (package remains 0.6.10)
 
 - Reorganize Chinese and English homepages around selective rework, approved first-pass refinement and complete delivery. Add production-oriented walkthroughs, file-output wiring and explicit capability limits.

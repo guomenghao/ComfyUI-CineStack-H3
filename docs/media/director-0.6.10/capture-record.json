@@ -1,0 +1,67 @@
+{
+  "captured_at": "2026-10-17",
+  "cinestack_version": "0.6.10",
+  "frontend_asset_version": "v0.6.10-629be9fc93f0f5a5",
+  "comfyui_version": "0.40.0",
+  "frontend_package": "1.53.6",
+  "node_renderer": "standard (Nodes 2.0 temporarily disabled, restored after capture)",
+  "capture": "Real ComfyUI browser UI; separate blank five-segment workflow; no queue/run action, no model generation. Temporary workflow discarded after capture. Existing workflows and running job were not changed.",
+  "media": "Original full browser PNG captures; GIF is a timed sequence of those screenshots, with palette conversion only. Not a continuous screen recording or generated-video benchmark.",
+  "demo_prerequisites": "No models, Refine/SIGMAS or generated caches attached. The visible preflight block is real; this is a settings walkthrough, not a successful refinement/export run.",
+  "final_ui_state": {
+    "seeds": [
+      {
+        "label": "片段 1 一采 seed",
+        "value": "561215411"
+      },
+      {
+        "label": "片段 2 一采 seed",
+        "value": "561215412"
+      },
+      {
+        "label": "片段 3 一采 seed",
+        "value": "561215499"
+      },
+      {
+        "label": "片段 4 一采 seed",
+        "value": "561215414"
+      },
+      {
+        "label": "片段 5 一采 seed",
+        "value": "561215415"
+      }
+    ],
+    "selection": [
+      {
+        "checked": false,
+        "label": "勾选段 片段 1"
+      },
+      {
+        "checked": false,
+        "label": "勾选段 片段 2"
+      },
+      {
+        "checked": true,
+        "label": "勾选段 片段 3"
+      },
+      {
+        "checked": false,
+        "label": "勾选段 片段 4"
+      },
+      {
+        "checked": false,
+        "label": "勾选段 片段 5"
+      }
+    ],
+    "rolling": true,
+    "exportMode": "全部导出",
+    "queueDisabled": true
+  },
+  "sha256": {
+    "01-select-third.png": "6311af0b5ea90feadad4472d98133fd9801c4291c9f0702c2b4a6906f42f839e",
+    "02-independent-seed.png": "a3721079d5b24c779e16b895147f2e35dc9bb9c1f74dd679a1649a6aa08d407a",
+    "03-first-pass.png": "84dbef70e1925a77acdcd7c0adff2a3018be97a47e29f74e61ab88c9d84c316d",
+    "04-refine-only.png": "11fcd03d5a3161754da43609c584f183a7ebfe73cc17495b224b8886278eb19d",
+    "05-rolling-export.png": "6e22c2e9d0e6f30d2d9c71bc3982f3ab118cae76b7fd6f2085a26c79f3fee1ec"
+  }
+}

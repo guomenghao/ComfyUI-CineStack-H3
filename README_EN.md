@@ -10,6 +10,12 @@ A **multi-segment H3 generation and refinement workbench for ComfyUI**, built fo
 
 Current H3 version: **0.6.10**, installed through Git. Not yet published to Comfy Registry. This repository provides the H3 module; a complete local filmmaking platform is a future direction.
 
+## See the real interface
+
+![Real CineStack Director: clip 3 fixed seed, first-pass controls and five-clip timeline](docs/media/director-0.6.10/03-first-pass.png)
+
+**Real ComfyUI UI; settings demo, no generation submitted.** A separate blank five-clip graph keeps user assets private. Missing-cache notices are genuine. Captured with the standard node renderer; see [capture context and steps](docs/director-ui-demo.md#english).
+
 ## Keep revisions focused on the clips that need them
 
 | Production problem | What CineStack provides |
@@ -31,13 +37,9 @@ This walkthrough comes from the project’s revision needs. It is not a timing o
 3. Run **First pass only** and review it. Once approved, keep first-pass settings unchanged and choose **Second pass only** for clip 3.
 4. Use **All export + Rolling** to combine the new result with saved final videos for the other clips. Choose **Segments + Rolling** when you only want the selected clips.
 
-```mermaid
-flowchart LR
-    A[Saved tail of clip 2] --> B[Rebuild first pass of clip 3]
-    C[Saved first frame of clip 4] --> B
-    B --> D[Approve and refine only]
-    D --> E[Reuse clips 1, 2, 4, 5 and export the timeline]
-```
+![Real UI steps for reworking only clip 3](docs/media/director-0.6.10/third-segment-walkthrough.gif)
+
+Screenshot sequence: select clip 3 → change its seed → first-pass settings → second-pass settings → All + Rolling. **No first pass, refinement or export ran. Refine is unconnected in this blank demo, so the real preflight block remains visible.** In production, generate and approve a first pass before refinement. [Original screenshots and prerequisites →](docs/director-ui-demo.md#english)
 
 Only required neighbour boundaries are read for conditioning. Unselected clips are not automatically resampled. Required caches and files must exist; missing data is reported. The right constraint is a visual still, not reverse audio or future-motion generation. Review both picture and sound at the joins.
 
