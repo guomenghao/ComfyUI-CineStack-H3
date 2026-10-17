@@ -14,7 +14,7 @@
 
 生成完成后，先通过 ComfyUI 卸载模型并释放可重新加载的动态 host/pinned 缓冲，再合并视频；合并后的分段输出共享整片存储，避免下游缓存再保留一套分段像素。阶段日志新增 `export_model_release_*` 和 `export_frame_handoff_after`。
 
-配合 [DLSS 插件 0.2.0](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux)，只连接 DLSS 的 VIDEO 输出时自动逐帧处理并输出文件视频。普通 IMAGE 工作流仍保留整片张量；需要随段数保持较低内存时，使用「全部导出＋滚动生成」，将导演台 `final_video` 直接接到 DLSS `video`，`first_pass_video` 单独接 SaveVideo。详见 [交接说明](docs/dlss-handoff.txt)。
+配合 [DLSS 插件 0.2.1](https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux)，只连接 DLSS 的 VIDEO 输出时自动逐帧处理并输出文件视频。0.2.1 修复临时封装导致帧率漂移、视频加速及音轨截短的问题；**必须更新 DLSS 仓库，仅更新导演台不包含该修复**。普通 IMAGE 工作流仍保留整片张量；需要随段数保持较低内存时，使用「全部导出＋滚动生成」，将导演台 `final_video` 直接接到 DLSS `video`，`first_pass_video` 单独接 SaveVideo。详见 [交接说明](docs/dlss-handoff.txt) 和 [时间轴与分阶段保存](docs/dlss-timing-0.2.1.txt)。
 
 ## 普通全部导出内存修复（0.6.8）
 

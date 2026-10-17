@@ -1,0 +1,20 @@
+导演台 → DLSS 时间轴与分阶段保存（2026-10-17）
+
+H3 导演台仍为0.6.10。本次修复在DLSS插件0.2.1，不改变导演台节点ID、工作流字段、seed、缓存格式、仅二采或段间连贯。
+DLSS更新仓库：https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux
+详情：https://github.com/guomenghao/ComfyUI-DLSS-NeuralRender-Linux/blob/main/TIMING.md
+
+修复了临时MKV average_rate漂移导致SR/NR连续加速的问题。DLSS输入按真实帧时间戳核验原视频帧率，输出检查帧数、时长和音轨，继续逐帧处理。AAC尽可能复制原压缩包。
+
+推荐保存入口：
+1. first_pass_video → SaveVideo：一采。
+2. final_video → SaveVideo：二采原片，也是后处理检查的reference_video。
+3. final_video → SR → SR开关 → SaveVideo：SR阶段；开关关闭时保存上游结果。
+4. SR开关 → NR → NR开关 → SaveVideo：NR阶段；开关关闭时保存上游结果。
+5. NR开关 → 补帧 → 补帧开关 → DLSS视频时长与音轨检查 → SaveVideo：最终片。
+检查节点的reference_video接二采原片，video接补帧开关输出。每个关闭的分支应保持LazySwitch语义，不应被新增保存节点强制计算。
+
+使用已经满意的二采原片进行后处理验证时，可用LoadVideo作为入口，不连接导演台或采样节点。这样不会重跑一采或二采。
+744帧@24fps的31秒原片经过SR、NR应仍为744帧/31秒；补至60fps应为1860帧/31秒。不要用已被加速到29.77秒的成片充当原片基准。
+
+没有修改第三方补帧算法，时间轴修复不保证消除高速动作的混合、拖影。分阶段预览用于定位变化；无需重新采样来验证文件交接。阶段保存需要额外磁盘空间。
