@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
       const filename = path.resolve(root, '.' + req.url);
       if (!filename.startsWith(root + path.sep)) throw new Error('Invalid path');
       let source = await fs.readFile(filename, 'utf8');
-      if (req.url === '/web/js/minimax_timeline.js') source += '\nexport {CineStackH3DirectorEditor, parseTimeline};';
+      if (req.url === '/web/js/minimax_timeline.js') source += '\nexport {CineStackH3DirectorEditor, parseTimeline, initDirectorEditor};';
       return res.end(source);
     } catch { res.statusCode = 404; return res.end(); }
   }
@@ -346,6 +346,48 @@ try {
     check(restored._cinestackVideoResults===rows,'unrelated execution payload does not erase completed video metadata');
     return checks;
   });checks.push(...deliveryChecks);
+  const lifecycleChecks=await page.evaluate(async()=>{
+    const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name)};
+    const {initDirectorEditor}=await import('/web/js/minimax_timeline.js');
+    const {createDirectorHost,showDirectorMountError}=await import('/web/js/cinestack_dom_host.js');
+    const node=editor.node, widget=editor.domWidget, root=editor.root;
+    const before=editor.timelineWidget.value;
+    widget.name='minimax_director_ui';node.widgets.push(widget);node._cineStackDomWidget=widget;
+    root.remove();initDirectorEditor(node);
+    check(root.parentElement===editor.container,'detached existing editor reattached without reconstruction');
+    check(editor.timelineWidget.value===before,'remount preserves serialized settings exactly');
+    let mounts=0;const host=createDirectorHost(()=>{mounts++;initDirectorEditor(node)});
+    document.body.append(host);await new Promise(r=>setTimeout(r,0));
+    const wrapper=document.createElement('div');document.body.append(wrapper);wrapper.replaceChildren(host);
+    await new Promise(r=>setTimeout(r,0));
+    check(mounts===2,'native host remount works across Nodes 2.0 container reparenting');
+    check(node._cineStackEditor===editor,'reparent does not duplicate editor or listeners');
+    let retried=0;showDirectorMountError(host,()=>retried++);
+    check(host.querySelector('[role=alert]').textContent.includes('Retry panel'),'mount failures show an accessible recovery action');
+    host.querySelector('button').click();check(retried===1,'retry calls mount once');
+    node._cineStackRemoved=true;check(initDirectorEditor(node)===null,'pending mounts cannot revive a removed node');
+    node._cineStackRemoved=false;host.remove();wrapper.remove();
+    const extension=globalThis.extensions.find(x=>x.name==='ComfyUI.CineStackH3DirectorPlugin');
+    class BrokenDirector {};
+    await extension.beforeRegisterNodeDef(BrokenDirector,{name:'CineStackH3Director',input:{required:{}}});
+    const broken=new BrokenDirector();broken.type=broken.comfyClass='CineStackH3Director';
+    broken.size=[1000,680];broken.flags={};broken.setDirtyCanvas=()=>{};
+    const brokenHost=createDirectorHost(()=>initDirectorEditor(broken));
+    const brokenWidget={name:'minimax_director_ui',element:brokenHost,options:{}};
+    broken.widgets=[brokenWidget];broken._cineStackDomWidget=brokenWidget;
+    // Force a constructor failure before any sampling; it must not remain a blank panel.
+    brokenWidget.options={};
+    const fail={name:'timeline_data',get value(){throw new Error('fixture init failure')}};
+    broken.widgets.push(fail);
+    document.body.append(brokenHost);await new Promise(r=>setTimeout(r,0));
+    check(!!brokenHost.querySelector('[role=alert]'),'constructor exception renders recovery instead of blank panel');
+    broken.widgets[1]={name:'timeline_data',value:'',options:{}};
+    brokenHost.querySelector('button').click();
+    check(!!broken._cineStackEditor?.root && !brokenHost.querySelector('[role=alert]'),'actual retry rebuilds the failed editor and clears its error panel');
+    check(brokenHost.querySelectorAll(':scope > .bd-wrap').length===1,'retry leaves exactly one editor root');
+    broken.onRemoved();brokenHost.remove();
+    return checks;
+  });checks.push(...lifecycleChecks);
   if(process.env.QA_DIR){
     await fs.mkdir(process.env.QA_DIR,{recursive:true});
     await page.evaluate(async()=>{await editor.overview.checkCache();editor.overview.list.scrollTop=0});

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.11 — 2026-10-17
+
+- Recover the Director DOM panel when Nodes 2.0 / legacy hosts reattach it; restore detached editor roots without recreating settings, ignore late mounts after node removal, and show a retry action on initialization errors.
+- Add lifecycle regression cases, two five-shot workflow templates with fixed independent seeds and separate file VIDEO saves, and bilingual execution / GPU acceptance instructions.
+- Validate offline archives with the official comfy-cli packer, including extracted versioned frontend assets; add Linux/Windows Python 3.10/3.12 packaging CI and document installation boundaries.
+- Disable Git path quoting for the official packer so Chinese-named legacy examples are included; verify every bundled example. Preserve frontend widget ordering and named Director values in the new templates.
+- No sampling algorithms, node identifiers, output ordering, cache schemas or cache fingerprints changed. GPU acceptance is deferred; no Registry publication.
+
 ## Real UI documentation — 2026-10-17 (package remains 0.6.10)
 
 - Add five actual ComfyUI browser captures and a timed screenshot GIF demonstrating clip-3-only selection, fixed seed changes, first/second-pass controls and rolling export settings.

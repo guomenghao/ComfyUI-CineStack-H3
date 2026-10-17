@@ -1,4 +1,5 @@
 import { ensureVideoOutputs } from "./cinestack_video_results.js";
+import { createDirectorHost, restoreDirectorRoot, showDirectorMountError } from "./cinestack_dom_host.js";
 // Modified for CineStack on 2026-10-13; see CHANGELOG.md and NOTICE.
 import { app } from "../../scripts/app.js";
 import { createSegmentSeedControl } from "./minimax_segment_seed.js";
@@ -1858,24 +1859,21 @@ function bindDirectorDomWidgetSizing(node, widget, getEditor) {
 
 function initDirectorEditor(node) {
     // Must not share Bernini's `_directorDomWidget` — their loadedGraphNode mounts on that key.
-    if (!isCineStackH3DirectorNode(node)) return null;
+    if (!isCineStackH3DirectorNode(node) || node._cineStackRemoved) return null;
     const widget = pruneDirectorDomWidgets(node);
     const container = widget?.element;
     if (!container) return null;
 
     const existing = node._cineStackEditor || widget._cineStackEditor;
+    // A partial instance is retained for cleanup, but cannot be laid out yet.
+    if (node._cineStackEditorMounting) return null;
     if (existing?.root && existing.container === container) {
         node._cineStackEditor = existing;
         widget._cineStackEditor = existing;
-        for (const wrap of [...container.querySelectorAll(":scope > .bd-wrap")]) {
-            if (wrap !== existing.root) wrap.remove();
-        }
+        restoreDirectorRoot(container, existing.root);
+        scheduleDirectorLayoutSettle(existing);
         return existing;
     }
-    // Constructor runs before `_cineStackEditor` is assigned; block re-entrant mounts
-    // from onConfigure / loadedGraphNode / layout callbacks during buildDOM.
-    if (node._cineStackEditorMounting) return existing || null;
-
     if (existing) destroyDirectorEditor(node);
 
     node._cineStackEditorMounting = true;
@@ -1885,6 +1883,7 @@ function initDirectorEditor(node) {
         const editor = new CineStackH3DirectorEditor(node, container, widget);
         node._cineStackEditor = editor;
         widget._cineStackEditor = editor;
+        restoreDirectorRoot(container, editor.root);
         ensureDirectorDomWidgetWidth(node);
         bindDirectorDomWidgetSizing(node, widget, () => node._cineStackEditor);
         // Only clamp true runaway; never steal normal user/workflow height (#7).
@@ -1893,8 +1892,11 @@ function initDirectorEditor(node) {
         scheduleDirectorLayoutSettle(editor);
         return editor;
     } catch (err) {
-        console.error("[MiniMax H3Director] UI init failed:", err);
-        return node._cineStackEditor || null;
+        console.error("[CineStack H3 Director] UI init failed:", err);
+        destroyDirectorEditor(node);
+        for (const wrap of container.querySelectorAll(":scope > .bd-wrap")) wrap.remove();
+        showDirectorMountError(container, () => initDirectorEditor(node));
+        return null;
     } finally {
         node._cineStackEditorMounting = false;
     }
@@ -2207,6 +2209,8 @@ function parseTimeline(raw, totalFrames, fps) {
 
 class CineStackH3DirectorEditor {
     constructor(node, container, domWidget) {
+        // Retain partial instances so a failed construction can release listeners/media.
+        node._cineStackEditor = this;
         this.node = node;
         this.container = container;
         this.domWidget = domWidget;
@@ -13590,6 +13594,7 @@ app.registerExtension({
         };
         const onCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
+            this._cineStackRemoved = false;
             const r = onCreated?.apply(this, arguments);
             normalizeDirectorOutputs(this);
             applyDirectorWidgetLabels(this);
@@ -13608,8 +13613,7 @@ app.registerExtension({
                 return r;
             }
 
-            const container = document.createElement("div");
-            container.className = "cstk-host";
+            const container = createDirectorHost(() => initDirectorEditor(this));
             container.style.minHeight = `${getDirectorUiHeight(null)}px`;
             container.style.setProperty("--comfy-widget-min-height", `${getDirectorUiHeight(null)}px`);
             const self = this;
@@ -13697,8 +13701,17 @@ app.registerExtension({
 
         const onRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
+            this._cineStackRemoved = true;
             destroyDirectorEditor(this);
             return onRemoved?.apply(this, arguments);
+        };
+
+        const onAdded = nodeType.prototype.onAdded;
+        nodeType.prototype.onAdded = function (...args) {
+            this._cineStackRemoved = false;
+            const result = onAdded?.apply(this, args);
+            queueMicrotask(() => initDirectorEditor(this));
+            return result;
         };
 
         const onConfigure = nodeType.prototype.onConfigure;

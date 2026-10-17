@@ -7,6 +7,22 @@ on:
 permissions:
   contents: read
 jobs:
+  package:
+    env:
+      PYTHONUTF8: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install comfy-cli==1.22.0 tomli
+      - run: python tools/check_package.py --output "${{ runner.temp }}/cinestack-h3-candidate.zip"
   cpu:
     runs-on: ubuntu-latest
     steps:

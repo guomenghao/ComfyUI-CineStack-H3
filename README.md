@@ -8,7 +8,9 @@
 
 [English](README_EN.md) · [制作案例](docs/production-cases.md) · [示例工作流](example_workflows/README.md) · [安装](#安装与更新) · [变更日志](CHANGELOG.md)
 
-当前 H3 版本 **0.6.10**，通过 Git 安装；尚未发布到 Comfy Registry。影栈当前提供 H3 生成模块，完整本地影视平台是后续方向。
+当前 H3 版本 **0.6.11**，通过 Git 安装；尚未发布到 Comfy Registry。影栈当前提供 H3 生成模块，完整本地影视平台是后续方向。
+
+新手入口：[五段独立 seed → 仅二采 → 滚动导出的可导入模板](docs/five-shot-workflow.md)。0.6.11 补上 Nodes 2.0 面板挂载恢复与加载失败重试；[安装与发布准备](docs/publishing.md)列明已验证范围和待完成的 GPU 验收。
 
 ## 看真实界面，再看操作步骤
 

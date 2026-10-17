@@ -40,11 +40,11 @@ try{
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
-  const results=await page.evaluate(async ({base,version})=>{
+  const results=await page.evaluate(async ({base,version,expectedCount})=>{
     const checks=[];const check=(ok,name)=>{if(!ok)throw new Error(name);checks.push(name);};
     const urls=await (await fetch('/extensions')).json();
     await Promise.all(urls.map(url=>import(url)));
-    check(urls.length===18,'all 18 production modules discovered through versioned paths');
+    check(urls.length===expectedCount && urls.some(url=>url.endsWith('/cinestack_dom_host.js')),'all production modules including DOM host discovered through versioned paths');
     const names=globalThis.extensions.map(x=>x.name);
     check(new Set(names).size===names.length,'each extension registers exactly once');
     const migration=globalThis.extensions.find(x=>x.name==='CineStack.H3.WorkflowMigration');
@@ -61,7 +61,7 @@ try{
     const modules=await Promise.all([import(base+'minimax_refine.js'),import(base+'minimax_refine.js')]);
     check(modules[0]===modules[1],'entry and dependency use same cached ESM instance');
     return checks;
-  },{base,version:manifest.version});
+  },{base,version:manifest.version,expectedCount:Object.keys(manifest.files).filter(x=>x.endsWith('.js')).length});
   if(errors.length)throw new Error(errors.join('\n'));
   if(requests.some(url=>url.startsWith('/extensions/')&&!url.startsWith(base)))throw new Error('unversioned extension requested');
   if(requests.filter(url=>url==='/scripts/app.js').length!==1||requests.filter(url=>url==='/scripts/api.js').length!==1)throw new Error('host modules instantiated more than once');

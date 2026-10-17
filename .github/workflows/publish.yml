@@ -33,6 +33,8 @@ jobs:
           assert version == os.environ['EXPECTED_VERSION'], 'Requested version differs from pyproject.toml'
           assert os.environ.get('TOKEN'), 'Set REGISTRY_ACCESS_TOKEN in repository Actions secrets'
           PYCODE
+      - name: Preserve non-ASCII example filenames in official packer
+        run: git config --local core.quotepath false
       - name: Publish Custom Node
         uses: Comfy-Org/publish-node-action@main
         with:

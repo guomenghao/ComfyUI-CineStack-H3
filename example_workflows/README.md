@@ -31,7 +31,11 @@ CLIP Loader 的 **type 必须选 `minimax`**。
 - **25** steps，`res_multistep` + `simple`，CFG **1.0**
 - Sigma shift：video **12** / audio **3**
 
-## 输出
+## 五段独立 seed 与滚动导出（新增）
+
+使用 [五段一采](cinestack_five_shots_first_pass.json) 和 [仅二采设置对照](cinestack_five_shots_refine_only.json)，先阅读 [完整中英文操作说明](../docs/five-shot-workflow.md)。这两份模板直接将文件 VIDEO 接 SaveVideo，不使用下面传统 IMAGE 的接法。提示词留空，选择本机模型并填写后才能开始制作；不包含缓存或 GPU 验收结果。
+
+## 输出（原有普通模式示例）
 
 导演台 → `CreateVideo` → `SaveVideo`（前缀 `video/MiniMaxH3_Director_*`），报告接 `PreviewAny`。
 

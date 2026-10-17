@@ -8,7 +8,9 @@ A **multi-segment H3 generation and refinement workbench for ComfyUI**, built fo
 
 [中文](README.md) · [Production walkthroughs](docs/production-cases.md#english) · [Example workflows](example_workflows/README.md) · [Install](#install-and-update) · [Changelog](CHANGELOG.md)
 
-Current H3 version: **0.6.10**, installed through Git. Not yet published to Comfy Registry. This repository provides the H3 module; a complete local filmmaking platform is a future direction.
+Current H3 version: **0.6.11**, installed through Git. Not yet published to Comfy Registry. This repository provides the H3 module; a complete local filmmaking platform is a future direction.
+
+Start with the [importable five-shot fixed-seed / second-pass-only / rolling-export templates](docs/five-shot-workflow.md). 0.6.11 adds Nodes 2.0 panel remount recovery and visible initialization retries. [Installation and release preparation](docs/publishing.md) separates verified checks from pending GPU acceptance.
 
 ## See the real interface
 
